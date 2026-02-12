@@ -1,48 +1,49 @@
 # MIDAAS Data Broker Desktop App
 
-A Tauri + React desktop app that uploads Heber data files to the MIDAAS ingest API. The UI lets you select the three required files plus an optional SCADA file, converts them to CSV, and posts the raw CSV body to the configured endpoint.
+A Tauri + React desktop app that automatically uploads Heber data files to the MIDAAS ingest API on a configurable schedule. Set your file paths once, press Start, and minimise to the system tray — it keeps uploading while your PC is on.
 
 ## Features
 
-- Select and upload: yesterlog, yestermet, tomorlog, plus optional SCADA .xlsx
-- Converts Excel/TSV to CSV before upload
-- Configurable base API URL with per-file override
-- Sequential uploads with status feedback
+- **Browse & lock** file paths for: yesterlog, yestermet, tomorlog, optional SCADA
+- **Scheduled uploads** on a configurable interval (default 10 min)
+- **Presigned-URL upload** — files go directly to S3 via the MIDAAS API
+- **Persistent config** — paths and interval survive app restarts
+- **System tray** — closing the window hides to tray; the timer keeps running
+- **Live activity log** with per-file status and countdown to next upload
 
 ## Requirements
 
-- Node.js 18+ (recommended)
-- Rust toolchain for Tauri (see https://tauri.app/)
+- Node.js 18+
+- Rust toolchain (install via https://rustup.rs)
 
-## Setup
+## Quick Start
 
-From the repository root:
+```bash
+cd desktop
+npm install
+npm run tauri dev      # launches the desktop app in dev mode
+```
 
-1. Install frontend dependencies
-   - `cd desktop`
-   - `npm install`
+## Build Installer
 
-2. Run the dev app
-   - `npm run dev`
+```bash
+cd desktop
+npm run tauri build
+```
 
-3. Run with Tauri (desktop shell)
-   - `npm run tauri dev`
+Produces an `.msi` installer + standalone `.exe` in `desktop/src-tauri/target/release/bundle/`.
 
 ## Usage
 
 1. Open the app.
-2. Confirm the default API URL or override it.
-3. Choose the three required files and optional SCADA file.
-4. Click "Upload All".
-
-Uploads are sent in this order: Yesterday Log, Yesterday Meta, Tomorrow Log, SCADA.
+2. Click **Browse** next to each file to set its path on disk.
+3. Set the upload interval (minutes).
+4. Click **▶ Start** — the first upload runs immediately, then repeats.
+5. Close the window — the app minimises to the system tray and keeps uploading.
+6. Right-click the tray icon → **Show** to reopen, or **Quit** to stop.
 
 ## Project Layout
 
-- desktop: React UI and Tauri setup
-- origonal-script: Original Python script for reference
-
-## Notes
-
-- Uploads are sent as raw CSV with `Content-Type: text/csv`.
-- If a file is missing, that upload is skipped with a status note.
+- `desktop/src/` — React UI (App.jsx)
+- `desktop/src-tauri/` — Tauri / Rust backend (system tray, file access, store)
+- `origonal-script/` — Original Python script for reference
