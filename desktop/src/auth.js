@@ -90,9 +90,11 @@ export async function login(username, password) {
   await _storage.set("auth_tokens", _tokens);
 
   const payload = decodeJwtPayload(result.IdToken);
+  const groups = payload?.["cognito:groups"] || [];
   return {
     username: payload?.["cognito:username"] || payload?.sub || username,
     email: payload?.email || "",
+    facilityId: groups[0] || "",
   };
 }
 
