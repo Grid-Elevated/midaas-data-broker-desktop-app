@@ -8,6 +8,20 @@ const API_BASE =
 const STORE_KEY = "midaas-broker-config";
 const MAX_HISTORY = 10;
 
+/* ---- Required data feed types (always present, can't be deleted) ---- */
+const REQUIRED_DATA_TYPES = ["todaylog", "tomorrowlog", "hydrodata"];
+
+function makeRequiredEntry(dataType) {
+  return makeEntry({
+    label: dataType.charAt(0).toUpperCase() + dataType.slice(1),
+    dataType,
+    uploadAs: `${dataType}.xlsx`,
+    sourceType: "folder",
+    scheduleType: "scheduled",
+    scheduleTimes: ["06:00"],
+  });
+}
+
 /* ---- Detect if running inside Tauri ---- */
 const IS_TAURI = !!(window.__TAURI_INTERNALS__);
 
@@ -105,6 +119,7 @@ function makeEntry(overrides = {}) {
     path: "",
     sourceType: "file", // "file" or "folder"
     uploadAs: "",       // custom filename for S3 (used in folder mode)
+    dataType: null,     // "todaylog" | "tomorrowlog" | "hydrodata" | null — tags the upload so lambdas know what to consume
     startAt: "",
     intervalMin: 10,
     scheduleType: "interval", // "interval" or "scheduled"
@@ -229,31 +244,44 @@ function App() {
 
       const saved = await storage.get("entries");
       if (saved && saved.length > 0) {
-        setEntries(
-          saved.map((e) => ({
-            ...makeEntry(),
-            ...e,
-            running: false,
-            lastStatus: e.lastStatus || "idle",
-            history: e.history || [],
-            segments: e.segments || [],
-            sourceType: e.sourceType || "file",
-            uploadAs: e.uploadAs || "",
-            startAt: e.startAt || "",
-            scheduleType: e.scheduleType || "interval",
-            scheduleTimes: e.scheduleTimes || [],
-          })),
-        );
+        const loaded = saved.map((e) => ({
+          ...makeEntry(),
+          ...e,
+          running: false,
+          lastStatus: e.lastStatus || "idle",
+          history: e.history || [],
+          segments: e.segments || [],
+          sourceType: e.sourceType || "file",
+          uploadAs: e.uploadAs || "",
+          dataType: e.dataType || null,
+          startAt: e.startAt || "",
+          scheduleType: e.scheduleType || "interval",
+          scheduleTimes: e.scheduleTimes || [],
+        }));
+        // Ensure all required data feed entries are always present
+        const result = [...loaded];
+        for (const dt of REQUIRED_DATA_TYPES) {
+          if (!result.find((e) => e.dataType === dt)) {
+            result.push(makeRequiredEntry(dt));
+          }
+        }
+        // Sort: required entries first (in defined order), then user entries
+        result.sort((a, b) => {
+          const ai = a.dataType ? REQUIRED_DATA_TYPES.indexOf(a.dataType) : Infinity;
+          const bi = b.dataType ? REQUIRED_DATA_TYPES.indexOf(b.dataType) : Infinity;
+          return ai - bi;
+        });
+        setEntries(result);
       } else {
-        setEntries([makeEntry()]);
+        setEntries(REQUIRED_DATA_TYPES.map(makeRequiredEntry));
       }
       setStoreReady(true);
     })();
   }, []);
 
   const persist = useCallback(async (list) => {
-    const toSave = list.map(({ id, label, path, sourceType, uploadAs, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history, segments }) => ({
-      id, label, path, sourceType, uploadAs, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history: (history || []).slice(0, MAX_HISTORY), segments: segments || [],
+    const toSave = list.map(({ id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history, segments }) => ({
+      id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history: (history || []).slice(0, MAX_HISTORY), segments: segments || [],
     }));
     await storage.set("entries", toSave);
   }, []);
@@ -337,7 +365,7 @@ function App() {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${idToken}`,
           },
-          body: JSON.stringify({ facilityId: getCurrentUser()?.facilityId || "", fileName: uploadFileName, contentType: ct }),
+          body: JSON.stringify({ facilityId: getCurrentUser()?.facilityId || "", fileName: uploadFileName, contentType: ct, ...(entry.dataType ? { dataType: entry.dataType } : {}) }),
         });
       } catch (netErr) { throw new Error(`Network error (presign): ${netErr?.message || netErr}`); }
 
@@ -541,6 +569,8 @@ function App() {
   };
 
   const removeEntry = (id) => {
+    const entry = entriesRef.current.find((e) => e.id === id);
+    if (entry?.dataType) return; // required data feeds cannot be removed
     stopOne(id);
     setEntries((prev) => { const next = prev.filter((e) => e.id !== id); persist(next); return next; });
   };
@@ -850,10 +880,13 @@ function App() {
                       />
                       <span className="card-last-upload">Last: {fmtDate(entry.lastUpload)}</span>
                     </div>
+                    {entry.dataType && (
+                      <span className="badge required" title={`Required data feed — uploads as ${entry.dataType}.xlsx`}>⚙ {entry.dataType}</span>
+                    )}
                     <span className={`badge ${entry.lastStatus === "uploading" ? "loading" : entry.running ? "active" : entry.path ? "ready" : "idle"}`}>
                       {entry.lastStatus === "uploading" ? "⟳ Uploading" : entry.running ? "● Active" : entry.path ? (entry.sourceType === "folder" ? "Folder" : "File") : "No file"}
                     </span>
-                    {!entry.running && (
+                    {!entry.running && !entry.dataType && (
                       <button className="ghost small danger card-delete-btn" onClick={() => removeEntry(entry.id)}>✕</button>
                     )}
                   </div>

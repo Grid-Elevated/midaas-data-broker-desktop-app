@@ -286,10 +286,11 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.badge.active  { background: var(--color-primary-light); color: var(--color-primary-text); }
-.badge.ready   { background: rgba(59,130,246,.1); color: #1e40af; }
-.badge.idle    { background: rgba(105,123,138,.12); color: #52626e; }
-.badge.loading { background: rgba(234,179,8,.15); color: #92400e; }
+.badge.active    { background: var(--color-primary-light); color: var(--color-primary-text); }
+.badge.ready     { background: rgba(59,130,246,.1); color: #1e40af; }
+.badge.idle      { background: rgba(105,123,138,.12); color: #52626e; }
+.badge.loading   { background: rgba(234,179,8,.15); color: #92400e; }
+.badge.required  { background: rgba(124,58,237,.12); color: #5b21b6; }
 
 /* Path row */
 .card-path-row {
