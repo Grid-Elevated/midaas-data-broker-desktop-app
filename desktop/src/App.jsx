@@ -9,7 +9,7 @@ const STORE_KEY = "midaas-broker-config";
 const MAX_HISTORY = 10;
 
 /* ---- Required data feed types (always present, can't be deleted) ---- */
-const REQUIRED_DATA_TYPES = ["todaylog", "tomorrowlog", "hydrodata"];
+const REQUIRED_DATA_TYPES = ["yesterdaylog", "tomorrowlog", "hydrodata"];
 
 function makeRequiredEntry(dataType) {
   return makeEntry({
@@ -119,7 +119,7 @@ function makeEntry(overrides = {}) {
     path: "",
     sourceType: "file", // "file" or "folder"
     uploadAs: "",       // custom filename for S3 (used in folder mode)
-    dataType: null,     // "todaylog" | "tomorrowlog" | "hydrodata" | null — tags the upload so lambdas know what to consume
+    dataType: null,     // "yesterdaylog" | "tomorrowlog" | "hydrodata" | null — tags the upload so lambdas know what to consume
     startAt: "",
     intervalMin: 10,
     scheduleType: "interval", // "interval" or "scheduled"
