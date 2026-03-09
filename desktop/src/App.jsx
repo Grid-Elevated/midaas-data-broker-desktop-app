@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import "./App.css";
-import { initAuth, login, logout, getValidIdToken, hasSession, getCurrentUser } from "./auth";
+import { initAuth, login, logout, getValidIdToken, getCurrentUser } from "./auth";
+import {
+  Lock, Hash, Upload, X, Play, Square, ArrowUp, ChevronDown, ChevronRight,
+  Check, Circle, RefreshCw, Plus, Search,
+} from "lucide-react";
 
 const API_BASE =
   "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
@@ -9,11 +13,25 @@ const STORE_KEY = "midaas-broker-config";
 const MAX_HISTORY = 10;
 
 /* ---- Required data feed types (always present, can't be deleted) ---- */
-const REQUIRED_DATA_TYPES = ["yesterdaylog", "tomorrowlog", "hydrodata"];
+const REQUIRED_DATA_TYPES = ["yesterdaylog", "tomorrowlog", "hydrodata", "yestermet"];
+
+/* ---- Data type metadata: friendly labels + color keys ---- */
+const DATA_TYPE_META = {
+  yesterdaylog: { label: "Yesterday Log", color: "amber"  },
+  tomorrowlog:  { label: "Tomorrow Log",  color: "indigo" },
+  hydrodata:    { label: "Hydro Data",    color: "cyan"   },
+  yestermet:     { label: "Yesterday Met",  color: "rose"   },
+  auxdata:       { label: "Aux Data",      color: "green"  },
+};
+
+/* ---- Optional data type tags (user-created entries: only Aux Data) ---- */
+const OPTIONAL_DATA_TYPES = [
+  { value: "auxdata", label: "Aux Data" },
+];
 
 function makeRequiredEntry(dataType) {
   return makeEntry({
-    label: dataType.charAt(0).toUpperCase() + dataType.slice(1),
+    label: DATA_TYPE_META[dataType]?.label || dataType,
     dataType,
     uploadAs: `${dataType}.xlsx`,
     sourceType: "folder",
@@ -112,6 +130,43 @@ function nearestQuarter() {
   return d.toTimeString().slice(0, 5);
 }
 
+async function uploadOneBlob(blob, uploadFileName, dataType, idToken, uploadDate) {
+  const ct = inferContentType(uploadFileName);
+  logMsg("info", `Requesting presigned URL for "${uploadFileName}"`);
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/datasets/upload`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ facilityId: getCurrentUser()?.facilityId || "", fileName: uploadFileName, contentType: ct, ...(dataType ? { dataType } : {}), ...(uploadDate ? { uploadTimestamp: uploadDate } : {}) }),
+    });
+  } catch (netErr) { throw new Error(`Network error (presign): ${netErr?.message || netErr}`); }
+
+  const resBody = await res.text();
+  if (!res.ok) throw new Error(`Presign failed [${res.status}]: ${resBody}`);
+
+  let data;
+  try { data = JSON.parse(resBody); }
+  catch { throw new Error(`Invalid presign response: ${resBody.slice(0, 200)}`); }
+
+  logMsg("info", `Got presigned URL, key=${data.key}`);
+  logMsg("info", `Uploading ${blob.size} bytes to S3…`);
+  let put;
+  try {
+    put = await fetch(data.uploadUrl, { method: "PUT", headers: data.requiredHeaders, body: blob });
+  } catch (s3Err) { throw new Error(`Network error (S3 PUT): ${s3Err?.message || s3Err}`); }
+
+  if (!put.ok) {
+    const s3Body = await put.text().catch(() => "");
+    throw new Error(`S3 upload failed [${put.status}]: ${s3Body.slice(0, 300)}`);
+  }
+  logMsg("info", `✓ Uploaded "${uploadFileName}" → ${data.key}`);
+  return data.key;
+}
+
 function makeEntry(overrides = {}) {
   return {
     id: uid(),
@@ -119,7 +174,7 @@ function makeEntry(overrides = {}) {
     path: "",
     sourceType: "file", // "file" or "folder"
     uploadAs: "",       // custom filename for S3 (used in folder mode)
-    dataType: null,     // "yesterdaylog" | "tomorrowlog" | "hydrodata" | null — tags the upload so lambdas know what to consume
+    dataType: null,     // "yesterdaylog" | "tomorrowlog" | "hydrodata" | "yesterlog" | "auxdata" | null — tags the upload so lambdas know what to consume
     startAt: "",
     intervalMin: 10,
     scheduleType: "interval", // "interval" or "scheduled"
@@ -209,6 +264,10 @@ function App() {
   const [expanded, setExpanded] = useState({}); // id → bool
   const [previews, setPreviews] = useState({}); // "entryId-segId" → { rows, error }
   const [search, setSearch] = useState("");
+  const [batchModal, setBatchModal] = useState(null);
+  // batchModal: null | { files:[{name,path?,_file?}], uploadAs:string, dataType:null|string, segments:[{id,name,startRow,endRow}], uploading:bool, results:[{name,status,msg}] }
+  const [batchPreviews, setBatchPreviews] = useState({}); // segId → { rows, error }
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   /* ---- auth state ---- */
   const [authed, setAuthed] = useState(false);
@@ -220,6 +279,11 @@ function App() {
   const timersRef = useRef({});
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+
+  /* ---- sticky header state ---- */
+  const heroRef = useRef(null);
+  const statusRef = useRef(null);
+  const [isSticky, setIsSticky] = useState(false);
 
   /* ---- persist --------------------------------------------------- */
 
@@ -286,6 +350,22 @@ function App() {
     await storage.set("entries", toSave);
   }, []);
 
+  /* ---- sticky header -------------------------------------------- */
+
+  useEffect(() => {
+    let raf;
+    const check = () => {
+      if (heroRef.current) {
+        const stuck = heroRef.current.getBoundingClientRect().bottom <= 0;
+        setIsSticky((prev) => (prev === stuck ? prev : stuck));
+      }
+      raf = requestAnimationFrame(check);
+    };
+    raf = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+
   /* ---- countdown ticker ------------------------------------------ */
 
   useEffect(() => {
@@ -320,7 +400,8 @@ function App() {
         fileName = entry.uploadAs?.trim() || newest.name;
         logMsg("info", `Folder mode: newest file is "${newest.name}", uploading as "${fileName}"`);
       } else {
-        fileName = basename(actualPath);
+        // Use uploadAs override (set by dataType tag) or fall back to actual filename
+        fileName = entry.uploadAs?.trim() || basename(actualPath);
       }
 
       const contentType = inferContentType(fileName);
@@ -354,48 +435,8 @@ function App() {
       throw new Error(`Auth failed: ${authErr?.message || authErr}`);
     }
 
-    const uploadOneBlob = async (uploadBlob, uploadFileName) => {
-      const ct = inferContentType(uploadFileName);
-      logMsg("info", `Requesting presigned URL for "${uploadFileName}"`);
-      let res;
-      try {
-        res = await fetch(`${API_BASE}/datasets/upload`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({ facilityId: getCurrentUser()?.facilityId || "", fileName: uploadFileName, contentType: ct, ...(entry.dataType ? { dataType: entry.dataType } : {}) }),
-        });
-      } catch (netErr) { throw new Error(`Network error (presign): ${netErr?.message || netErr}`); }
-
-      const resBody = await res.text();
-      if (!res.ok) throw new Error(`Presign failed [${res.status}]: ${resBody}`);
-
-      let data;
-      try { data = JSON.parse(resBody); }
-      catch { throw new Error(`Invalid presign response: ${resBody.slice(0, 200)}`); }
-
-      logMsg("info", `Got presigned URL, key=${data.key}`);
-
-      logMsg("info", `Uploading ${uploadBlob.size} bytes to S3…`);
-      let put;
-      try {
-        put = await fetch(data.uploadUrl, {
-          method: "PUT",
-          headers: data.requiredHeaders,
-          body: uploadBlob,
-        });
-      } catch (s3Err) { throw new Error(`Network error (S3 PUT): ${s3Err?.message || s3Err}`); }
-
-      if (!put.ok) {
-        const s3Body = await put.text().catch(() => "");
-        throw new Error(`S3 upload failed [${put.status}]: ${s3Body.slice(0, 300)}`);
-      }
-
-      logMsg("info", `✓ Uploaded "${uploadFileName}" → ${data.key}`);
-      return data.key;
-    };
+    const uploadOneBlobForEntry = (uploadBlob, uploadFileName) =>
+      uploadOneBlob(uploadBlob, uploadFileName, entry.dataType, idToken);
 
     if (entry.segments && entry.segments.length > 0) {
       // Segment mode: slice each segment from the bytes we already read, then upload
@@ -414,14 +455,14 @@ function App() {
         const segBlob = buildSegmentBlob(fileBytes, seg);
         logMsg("info", `Segment blob size: ${segBlob.size} bytes`);
         const segName = segmentFileName(fileName, seg.name || seg.id);
-        await uploadOneBlob(segBlob, segName);
+        await uploadOneBlobForEntry(segBlob, segName);
         uploadedNames.push(segName);
       }
       return { status: "ok", msg: `Uploaded ${uploadedNames.length} segments: ${uploadedNames.join(", ")}` };
     }
 
     // No segments — upload whole file as-is
-    await uploadOneBlob(blob, fileName);
+    await uploadOneBlobForEntry(blob, fileName);
     return { status: "ok", msg: `Uploaded → ${fileName}` };
   }, []);
 
@@ -569,8 +610,6 @@ function App() {
   };
 
   const removeEntry = (id) => {
-    const entry = entriesRef.current.find((e) => e.id === id);
-    if (entry?.dataType) return; // required data feeds cannot be removed
     stopOne(id);
     setEntries((prev) => { const next = prev.filter((e) => e.id !== id); persist(next); return next; });
   };
@@ -578,6 +617,146 @@ function App() {
   const updateEntry = (id, field, value) => {
     setEntries((prev) => { const next = prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)); persist(next); return next; });
   };
+
+  /* ---- batch upload ---- */
+
+  const openBatchPicker = async () => {
+    if (IS_TAURI) {
+      const selected = await tauriDialog.open({
+        multiple: true,
+        filters: [{ name: "Data files", extensions: ["xls", "xlsx", "csv", "tsv", "txt"] }],
+      });
+      if (!selected) return;
+      const paths = Array.isArray(selected) ? selected : [selected];
+      setBatchModal({ files: paths.map((p) => ({ name: basename(p), path: p, uploadDate: '' })), uploadAs: "", dataType: null, segments: [], uploading: false, results: [], bulkDate: '' });
+      setBatchPreviews({});
+    } else {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".xls,.xlsx,.csv,.tsv,.txt";
+      input.multiple = true;
+      input.onchange = () => {
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+        setBatchModal({ files: files.map((f) => ({ name: f.name, _file: f, uploadDate: '' })), uploadAs: "", dataType: null, segments: [], uploading: false, results: [], bulkDate: '' });
+        setBatchPreviews({});
+      };
+      input.click();
+    }
+  };
+
+  const runBatchUpload = async () => {
+    if (!batchModal?.files.length) return;
+    const uploadAs = batchModal.uploadAs.trim();
+    if (!uploadAs) return;
+
+    setBatchModal((prev) => ({ ...prev, uploading: true, results: [] }));
+
+    let idToken;
+    try { idToken = await getValidIdToken(); }
+    catch (e) {
+      setBatchModal((prev) => ({ ...prev, uploading: false, results: [{ name: "auth", status: "error", msg: e.message }] }));
+      return;
+    }
+
+    const segments = batchModal.segments;
+    const results = [];
+    for (const f of batchModal.files) {
+      try {
+        let fileBytes;
+        if (IS_TAURI) {
+          fileBytes = await tauriFs.readFile(f.path);
+        } else {
+          fileBytes = new Uint8Array(await f._file.arrayBuffer());
+        }
+
+        if (segments.length > 0) {
+          const uploadedSegs = [];
+          for (const seg of segments) {
+            const segBlob = buildSegmentBlob(fileBytes, seg);
+            const segName = segmentFileName(uploadAs, seg.name || seg.id);
+            await uploadOneBlob(segBlob, segName, batchModal.dataType, idToken, f.uploadDate ? new Date(f.uploadDate).toISOString() : undefined);
+            uploadedSegs.push(segName);
+          }
+          results.push({ name: f.name, status: "ok", msg: `${uploadedSegs.length} segment${uploadedSegs.length !== 1 ? "s" : ""}: ${uploadedSegs.join(", ")}` });
+        } else {
+          const blob = new Blob([fileBytes], { type: inferContentType(uploadAs) });
+          await uploadOneBlob(blob, uploadAs, batchModal.dataType, idToken, f.uploadDate ? new Date(f.uploadDate).toISOString() : undefined);
+          results.push({ name: f.name, status: "ok", msg: `Uploaded as ${uploadAs}` });
+        }
+      } catch (err) {
+        results.push({ name: f.name, status: "error", msg: err.message });
+      }
+      setBatchModal((prev) => ({ ...prev, results: [...results] }));
+    }
+
+    setBatchModal((prev) => ({ ...prev, uploading: false }));
+  };
+
+  const addBatchSegment = () => {
+    setBatchModal((prev) => ({ ...prev, segments: [...(prev.segments || []), { id: uid(), name: "", startRow: 1, endRow: 10 }] }));
+  };
+
+  const removeBatchSegment = (segId) => {
+    setBatchPreviews((p) => { const n = { ...p }; delete n[segId]; return n; });
+    setBatchModal((prev) => ({ ...prev, segments: prev.segments.filter((s) => s.id !== segId) }));
+  };
+
+  const updateBatchSegment = (segId, field, value) => {
+    setBatchModal((prev) => ({
+      ...prev,
+      segments: prev.segments.map((s) => (s.id === segId ? { ...s, [field]: value } : s)),
+    }));
+    if ((field === "startRow" || field === "endRow") && batchPreviews[segId]) {
+      // Refresh preview with updated range
+      const seg = batchModal.segments.find((s) => s.id === segId);
+      if (seg) loadBatchPreview({ ...seg, [field]: value });
+    }
+  };
+
+  const loadBatchPreview = async (seg) => {
+    const firstFile = batchModal?.files[0];
+    if (!firstFile) return;
+    try {
+      let fileBytes;
+      if (IS_TAURI) {
+        fileBytes = await tauriFs.readFile(firstFile.path);
+      } else {
+        fileBytes = new Uint8Array(await firstFile._file.arrayBuffer());
+      }
+      const wb = XLSX.read(fileBytes, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      const sliced = allRows.slice(seg.startRow - 1, seg.endRow);
+      setBatchPreviews((p) => ({ ...p, [seg.id]: { rows: sliced, error: null } }));
+    } catch (err) {
+      setBatchPreviews((p) => ({ ...p, [seg.id]: { rows: null, error: err.message } }));
+    }
+  };
+
+  const toggleBatchPreview = (seg) => {
+    if (batchPreviews[seg.id]) {
+      setBatchPreviews((p) => { const n = { ...p }; delete n[seg.id]; return n; });
+    } else {
+      loadBatchPreview(seg);
+    }
+  };
+
+  // Updates dataType and keeps uploadAs in sync (auto-sets to {tag}.xlsx when tagging, clears when untagging)
+  const updateDataType = useCallback((id, newTag) => {
+    setEntries((prev) => {
+      const entry = prev.find((e) => e.id === id);
+      if (!entry) return prev;
+      const prevUploadAs = entry.uploadAs?.trim() || "";
+      const wasTagName = entry.dataType ? prevUploadAs === `${entry.dataType}.xlsx` : !prevUploadAs;
+      const newUploadAs = newTag
+        ? (wasTagName || !prevUploadAs ? `${newTag}.xlsx` : prevUploadAs)
+        : (wasTagName ? "" : prevUploadAs);
+      const next = prev.map((e) => (e.id === id ? { ...e, dataType: newTag || null, uploadAs: newUploadAs } : e));
+      persist(next);
+      return next;
+    });
+  }, [persist]);
 
   const addSegment = (entryId) => {
     setEntries((prev) => {
@@ -802,8 +981,8 @@ function App() {
   return (
     <div className="app">
       <div className="backdrop" />
-      <main className="shell">
-        <header className="hero">
+      <main className="shell shell--hero">
+        <header className="hero" ref={heroRef}>
           <div className="logo-row">
             <img src="/Grid_logo_mark.png" alt="Grid logo" className="logo-img" />
             <span className="logo-text">MIDAAS</span>
@@ -814,37 +993,50 @@ function App() {
             Close the window — it keeps uploading from the system tray.
           </p>
         </header>
+      </main>
 
-        <section className="status-bar">
-          <div className={`indicator ${runningCount > 0 ? "on" : "off"}`}>
-            <span className="dot" />
-            {runningCount > 0 ? `${runningCount} active` : "All stopped"}
+      <div className={`status-search-wrap${isSticky ? " stuck" : ""}`} ref={statusRef}>
+          <div className="status-search-inner">
+            {isSticky && (
+              <div className="sticky-logo-row">
+                <img src="/Grid_logo_mark.png" alt="Grid logo" className="sticky-logo-img" />
+                <span className="sticky-logo-text">MIDAAS</span>
+              </div>
+            )}
+            <section className="status-bar">
+              <div className={`indicator ${runningCount > 0 ? "on" : "off"}`}>
+                <span className="dot" />
+                {runningCount > 0 ? `${runningCount} active` : "All stopped"}
+              </div>
+              <div className="status-stats">
+                <span>Files: <strong>{entries.length}</strong></span>
+                <span>Facility: <strong>{authUser?.facilityId || "—"}</strong></span>
+                {authUser && <span>User: <strong>{authUser.email || authUser.username}</strong></span>}
+                {!IS_TAURI && <span style={{color:"#92400e",fontWeight:600}}>⚠ Browser mode</span>}
+              </div>
+              <button className="ghost small" onClick={handleLogout}>Sign Out</button>
+              <button className="ghost small add-btn" onClick={() => addEntry("file")}><Plus className="icon-xs" /> Add File</button>
+              <button className="ghost small add-btn" onClick={() => addEntry("folder")}><Plus className="icon-xs" /> Add Folder</button>
+              <button className="ghost small add-btn" onClick={openBatchPicker}><Upload className="icon-xs" /> Batch Upload</button>
+            </section>
+
+            <div className="search-bar">
+              <Search className="search-icon" />
+              <input
+                className="search-input"
+                type="text"
+                placeholder="Search by label or filename…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {search && (
+                <button className="search-clear" onClick={() => setSearch("")}><X className="icon-xs" /></button>
+              )}
+            </div>
           </div>
-          <div className="status-stats">
-            <span>Files: <strong>{entries.length}</strong></span>
-            <span>Facility: <strong>{authUser?.facilityId || "—"}</strong></span>
-            {authUser && <span>User: <strong>{authUser.email || authUser.username}</strong></span>}
-            {!IS_TAURI && <span style={{color:"#92400e",fontWeight:600}}>⚠ Browser mode</span>}
-          </div>
-          <button className="ghost small" onClick={handleLogout}>Sign Out</button>
-          <button className="ghost small add-btn" onClick={() => addEntry("file")}>+ Add File</button>
-          <button className="ghost small add-btn" onClick={() => addEntry("folder")}>+ Add Folder</button>
-        </section>
+      </div>
 
-        <div className="search-bar">
-          <svg className="search-icon" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.45 4.39l4.26 4.26a.75.75 0 11-1.06 1.06l-4.26-4.26A7 7 0 012 9z" clipRule="evenodd"/></svg>
-          <input
-            className="search-input"
-            type="text"
-            placeholder="Search by label or filename…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button className="search-clear" onClick={() => setSearch("")}>✕</button>
-          )}
-        </div>
-
+      <main className="shell shell--body">
         <section className="card-list">
           {entries.filter((entry) => {
             if (!search.trim()) return true;
@@ -854,7 +1046,6 @@ function App() {
             const fullPath = (entry.path || "").toLowerCase();
             return label.includes(q) || file.includes(q) || fullPath.includes(q);
           }).map((entry) => {
-            const fileName = basename(entry.path);
             const isExpanded = expanded[entry.id];
             const hasUnnamedSegments = (entry.segments || []).length > 0 && !(entry.segments || []).every((s) => s.name.trim());
             const statusClass =
@@ -863,9 +1054,9 @@ function App() {
               entry.lastStatus === "ok" ? "state-success" : "";
 
             return (
-              <article className={`card ${statusClass}`} key={entry.id}>
-                {/* Left color stripe for state */}
-                <div className={`card-stripe ${entry.lastStatus}`} />
+              <article className={`card ${statusClass}${entry.dataType ? ` card-dt-${entry.dataType}` : ""}`} key={entry.id}>
+                {/* Left color stripe */}
+                <div className={`card-stripe ${entry.lastStatus}${entry.dataType ? ` dt-${entry.dataType}` : ""}`} />
 
                 <div className="card-body">
                   {/* Row 1: label + last upload + badge + delete */}
@@ -881,15 +1072,34 @@ function App() {
                       <span className="card-last-upload">Last: {fmtDate(entry.lastUpload)}</span>
                     </div>
                     {entry.dataType && (
-                      <span className="badge required" title={`Required data feed — uploads as ${entry.dataType}.xlsx`}>⚙ {entry.dataType}</span>
+                      <span
+                        className={`badge dt-${entry.dataType}`}
+                        title={`${REQUIRED_DATA_TYPES.includes(entry.dataType) ? "Required singleton feed" : "Aux data"} — uploads as ${entry.uploadAs || entry.dataType + ".xlsx"}`}
+                      >
+                        {REQUIRED_DATA_TYPES.includes(entry.dataType) ? <Lock className="icon-xs" /> : <Hash className="icon-xs" />}
+                        {" "}{DATA_TYPE_META[entry.dataType]?.label || entry.dataType}
+                      </span>
                     )}
                     <span className={`badge ${entry.lastStatus === "uploading" ? "loading" : entry.running ? "active" : entry.path ? "ready" : "idle"}`}>
-                      {entry.lastStatus === "uploading" ? "⟳ Uploading" : entry.running ? "● Active" : entry.path ? (entry.sourceType === "folder" ? "Folder" : "File") : "No file"}
+                      {entry.lastStatus === "uploading" ? <><RefreshCw className="icon-xs spin" /> Uploading</> : entry.running ? <><Circle className="icon-xs" /> Active</> : entry.path ? (entry.sourceType === "folder" ? "Folder" : "File") : "No file"}
                     </span>
-                    {!entry.running && !entry.dataType && (
-                      <button className="ghost small danger card-delete-btn" onClick={() => removeEntry(entry.id)}>✕</button>
+                    {!entry.running && (
+                      <button className="ghost small danger card-delete-btn" onClick={() => {
+                        if (REQUIRED_DATA_TYPES.includes(entry.dataType)) {
+                          setDeleteConfirm({ id: entry.id, label: entry.label, dataType: entry.dataType });
+                        } else {
+                          removeEntry(entry.id);
+                        }
+                      }}><X className="icon-xs" /></button>
                     )}
                   </div>
+
+                  {/* Warning: required feed with no path set */}
+                  {REQUIRED_DATA_TYPES.includes(entry.dataType) && !entry.path && (
+                    <div className="required-warning">
+                      ⚠ No file configured — this required feed must be set up before it can run.
+                    </div>
+                  )}
 
                   {/* Row 2: file/folder path */}
                   <div className="card-path-row">
@@ -897,7 +1107,20 @@ function App() {
                       {entry.path || (entry.sourceType === "folder" ? "No folder selected" : "No file selected")}
                     </span>
                     <button className="ghost small" onClick={() => pickFile(entry.id)} disabled={entry.running}>
-                      Browse
+                      {REQUIRED_DATA_TYPES.includes(entry.dataType)
+                        ? (entry.path ? "Change File" : "Set File")
+                        : "Browse"}
+                    </button>
+                  </div>
+
+                  <div className="card-source-toggle">
+                    <button className={`schedule-tab${entry.sourceType === 'file' ? ' active' : ''}`}
+                      onClick={() => updateEntry(entry.id, 'sourceType', 'file')} disabled={entry.running}>
+                      File
+                    </button>
+                    <button className={`schedule-tab${entry.sourceType === 'folder' ? ' active' : ''}`}
+                      onClick={() => updateEntry(entry.id, 'sourceType', 'folder')} disabled={entry.running}>
+                      Folder
                     </button>
                   </div>
 
@@ -913,6 +1136,29 @@ function App() {
                         disabled={entry.running}
                       />
                       <span className="uploadas-hint">S3 filename (newest file in folder will use this name)</span>
+                    </div>
+                  )}
+
+                  {/* Data Type Tag (optional, for user-created entries) */}
+                  {!REQUIRED_DATA_TYPES.includes(entry.dataType) && (
+                    <div className="card-datatype-row">
+                      <span className="datatype-label">Tag:</span>
+                      <div className="datatype-options">
+                        {OPTIONAL_DATA_TYPES.map((dt) => (
+                          <button
+                            key={dt.value}
+                            className={`ghost small datatype-btn${entry.dataType === dt.value ? " active" : ""}`}
+                            onClick={() => updateDataType(entry.id, entry.dataType === dt.value ? null : dt.value)}
+                            disabled={entry.running}
+                            title={dt.label}
+                          >
+                            {dt.label}
+                          </button>
+                        ))}
+                      </div>
+                      {entry.dataType && (
+                        <span className="datatype-hint">uploads as <code>{entry.dataType}.xlsx</code></span>
+                      )}
                     </div>
                   )}
 
@@ -997,7 +1243,7 @@ function App() {
                                   <button className="ghost small danger" onClick={() => {
                                     const newTimes = entry.scheduleTimes.filter((_, j) => j !== i);
                                     updateEntry(entry.id, "scheduleTimes", newTimes);
-                                  }}>✕</button>
+                                  }}><X className="icon-xs" /></button>
                                 )}
                               </div>
                             ))}
@@ -1005,7 +1251,7 @@ function App() {
                               className="ghost small"
                               onClick={() => updateEntry(entry.id, "scheduleTimes", [...(entry.scheduleTimes || []), "00:00"])}
                               disabled={entry.running}
-                            >+ Add Time</button>
+                            ><Plus className="icon-xs" /> Add Time</button>
                           </div>
                         </div>
                       )}
@@ -1016,11 +1262,11 @@ function App() {
                         <span className="countdown-inline">Next: <strong className="countdown">{countdowns[entry.id]}</strong></span>
                       )}
                       {!entry.running ? (
-                        <button className="primary small" onClick={() => startOne(entry.id)} disabled={!entry.path || hasUnnamedSegments || (entry.scheduleType === "scheduled" && (!entry.scheduleTimes || entry.scheduleTimes.length === 0))}>▶ Start</button>
+                        <button className="primary small" onClick={() => startOne(entry.id)} disabled={!entry.path || hasUnnamedSegments || (entry.scheduleType === "scheduled" && (!entry.scheduleTimes || entry.scheduleTimes.length === 0))}><Play className="icon-xs" /> Start</button>
                       ) : (
-                        <button className="primary small stop" onClick={() => stopOne(entry.id)}>■ Stop</button>
+                        <button className="primary small stop" onClick={() => stopOne(entry.id)}><Square className="icon-xs" /> Stop</button>
                       )}
-                      <button className="ghost small" onClick={() => runOne(entry.id)} disabled={!entry.path || entry.lastStatus === "uploading" || hasUnnamedSegments}>↑ Now</button>
+                      <button className="ghost small" onClick={() => runOne(entry.id)} disabled={!entry.path || entry.lastStatus === "uploading" || hasUnnamedSegments}><ArrowUp className="icon-xs" /> Now</button>
                     </div>
                   </div>
 
@@ -1029,7 +1275,7 @@ function App() {
                     <div className="segments-header">
                       <span className="segments-title">Segments</span>
                       <span className="segments-hint">{(entry.segments || []).length === 0 ? "Uploads entire file" : `${entry.segments.length} segment${entry.segments.length > 1 ? "s" : ""}`}</span>
-                      <button className="ghost small" onClick={() => addSegment(entry.id)} disabled={entry.running}>+ Segment</button>
+                      <button className="ghost small" onClick={() => addSegment(entry.id)} disabled={entry.running}><Plus className="icon-xs" /> Segment</button>
                     </div>
                     {(entry.segments || []).map((seg) => {
                       const previewKey = `${entry.id}-${seg.id}`;
@@ -1058,7 +1304,7 @@ function App() {
                               {preview ? "Hide" : "Preview"}
                             </button>
                             {!entry.running && (
-                              <button className="ghost small danger" onClick={() => removeSegment(entry.id, seg.id)}>✕</button>
+                              <button className="ghost small danger" onClick={() => removeSegment(entry.id, seg.id)}><X className="icon-xs" /></button>
                             )}
                           </div>
                           {preview && preview.error && (
@@ -1104,13 +1350,13 @@ function App() {
                   {(entry.history || []).length > 0 && (
                     <div className="card-history-section">
                       <button className="history-toggle" onClick={() => toggleExpanded(entry.id)}>
-                        {isExpanded ? "▾" : "▸"} History ({entry.history.length})
+                        {isExpanded ? <ChevronDown className="icon-xs" /> : <ChevronRight className="icon-xs" />} History ({entry.history.length})
                       </button>
                       {isExpanded && (
                         <div className="history-list">
                           {entry.history.map((h, i) => (
                             <div key={i} className={`history-row ${h.status}`}>
-                              <span className="history-icon">{h.status === "ok" ? "✓" : "✗"}</span>
+                              <span className="history-icon">{h.status === "ok" ? <Check className="icon-xs" /> : <X className="icon-xs" />}</span>
                               <span className="history-ts">{fmtDate(h.ts)}</span>
                               <span className="history-msg">{h.msg}</span>
                             </div>
@@ -1126,15 +1372,237 @@ function App() {
 
           <div className="add-card-row">
             <button className="add-card" onClick={() => addEntry("file")}>
-              <span className="add-icon">+</span>
+              <span className="add-icon"><Plus /></span>
               <span>Add File</span>
             </button>
             <button className="add-card" onClick={() => addEntry("folder")}>
-              <span className="add-icon">+</span>
+              <span className="add-icon"><Plus /></span>
               <span>Add Folder</span>
+            </button>
+            <button className="add-card" onClick={openBatchPicker}>
+              <span className="add-icon"><Upload /></span>
+              <span>Batch Upload</span>
             </button>
           </div>
         </section>
+
+        {/* ---- Batch Upload Modal ---- */}
+        {batchModal && (
+          <div className="batch-overlay" onClick={() => !batchModal.uploading && setBatchModal(null)}>
+            <div className="batch-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="batch-modal-header">
+                <div>
+                  <h3 className="batch-modal-title">Batch Upload</h3>
+                  <p className="batch-modal-subtitle">
+                    Upload multiple files with the same S3 name to create multiple versions.
+                  </p>
+                </div>
+                {!batchModal.uploading && (
+                  <button className="ghost small" onClick={() => setBatchModal(null)}><X className="icon-xs" /></button>
+                )}
+              </div>
+
+              {/* Selected files */}
+              <div className="batch-section-label">Selected files ({batchModal.files.length})</div>
+              <div className="batch-date-bulk">
+                <input
+                  type="datetime-local"
+                  className="batch-date-input"
+                  value={batchModal.bulkDate || ''}
+                  onChange={(e) => setBatchModal((prev) => ({ ...prev, bulkDate: e.target.value }))}
+                  disabled={batchModal.uploading}
+                />
+                <button className="ghost small" disabled={batchModal.uploading || !batchModal.bulkDate}
+                  onClick={() => setBatchModal((prev) => ({
+                    ...prev, files: prev.files.map((f) => ({ ...f, uploadDate: prev.bulkDate }))
+                  }))}>
+                  Apply to all
+                </button>
+                <span className="batch-date-hint">Optional: set custom upload dates for backfilling</span>
+              </div>
+              <div className="batch-files-list">
+                {batchModal.files.map((f, i) => {
+                  const result = batchModal.results[i];
+                  return (
+                    <div key={i} className="batch-file-item">
+                      <span className="batch-file-name" title={f.path || f.name}>{f.name}</span>
+                      <input
+                        type="datetime-local"
+                        className="batch-date-input"
+                        value={f.uploadDate || ''}
+                        onChange={(e) => setBatchModal((prev) => ({
+                          ...prev,
+                          files: prev.files.map((file, j) => j === i ? { ...file, uploadDate: e.target.value } : file),
+                        }))}
+                        disabled={batchModal.uploading}
+                        title="Custom upload date (leave empty for current time)"
+                      />
+                      {result && (
+                        <span className={`batch-file-status ${result.status === "ok" ? "ok" : "err"}`}>
+                          {result.status === "ok" ? <Check className="icon-xs" /> : <X className="icon-xs" />} {result.msg}
+                        </span>
+                      )}
+                      {!result && batchModal.uploading && batchModal.results.length === i && (
+                        <span className="batch-file-status uploading">uploading…</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Upload As */}
+              <div className="batch-upload-as">
+                <label>Upload as (S3 filename) <span className="batch-required">*</span></label>
+                <input
+                  type="text"
+                  placeholder="e.g. hydrodata.xlsx"
+                  value={batchModal.uploadAs}
+                  onChange={(e) => setBatchModal((prev) => ({ ...prev, uploadAs: e.target.value }))}
+                  disabled={batchModal.uploading}
+                />
+              </div>
+
+              {/* Optional data type tag */}
+              <div className="batch-tag-row">
+                <span className="batch-section-label">Tag (optional)</span>
+                <div className="datatype-options">
+                  {OPTIONAL_DATA_TYPES.map((dt) => (
+                    <button
+                      key={dt.value}
+                      className={`ghost small datatype-btn${batchModal.dataType === dt.value ? " active" : ""}`}
+                      onClick={() => setBatchModal((prev) => ({ ...prev, dataType: prev.dataType === dt.value ? null : dt.value }))}
+                      disabled={batchModal.uploading}
+                    >
+                      {dt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Segments */}
+              <div className="batch-tag-row">
+                <div style={{ display: "flex", alignItems: "center", gap: ".75rem" }}>
+                  <span className="batch-section-label">
+                    Segments {batchModal.segments.length === 0 ? "— uploads whole file" : `(${batchModal.segments.length})`}
+                  </span>
+                  {!batchModal.uploading && (
+                    <button className="ghost small" onClick={addBatchSegment}>+ Segment</button>
+                  )}
+                </div>
+                {batchModal.segments.map((seg) => {
+                  const preview = batchPreviews[seg.id];
+                  const uploadedAs = batchModal.uploadAs.trim()
+                    ? segmentFileName(batchModal.uploadAs.trim(), seg.name || seg.id)
+                    : null;
+                  return (
+                    <div className="segment-block" key={seg.id}>
+                      <div className="segment-row">
+                        <input
+                          className="segment-name-input"
+                          value={seg.name}
+                          onChange={(e) => updateBatchSegment(seg.id, "name", e.target.value)}
+                          placeholder="Segment name…"
+                          disabled={batchModal.uploading}
+                        />
+                        <label className="segment-range">
+                          <span>Rows</span>
+                          <input type="number" min={1} value={seg.startRow}
+                            onChange={(e) => updateBatchSegment(seg.id, "startRow", Math.max(1, Number(e.target.value) || 1))}
+                            disabled={batchModal.uploading} className="segment-range-input" />
+                          <span>–</span>
+                          <input type="number" min={1} value={seg.endRow}
+                            onChange={(e) => updateBatchSegment(seg.id, "endRow", Math.max(1, Number(e.target.value) || 1))}
+                            disabled={batchModal.uploading} className="segment-range-input" />
+                        </label>
+                        <button className="ghost small" onClick={() => toggleBatchPreview(seg)}
+                          disabled={!batchModal.files.length}>
+                          {preview ? "Hide" : "Preview"}
+                        </button>
+                        {!batchModal.uploading && (
+                          <button className="ghost small danger" onClick={() => removeBatchSegment(seg.id)}><X className="icon-xs" /></button>
+                        )}
+                      </div>
+                      {uploadedAs && (
+                        <div className="datatype-hint" style={{ paddingLeft: ".25rem" }}>
+                          uploads as <code>{uploadedAs}</code>
+                          {batchModal.files.length > 1 && <> × {batchModal.files.length} files</>}
+                        </div>
+                      )}
+                      {preview?.error && <div className="segment-preview-error">{preview.error}</div>}
+                      {preview?.rows && (
+                        <div className="segment-preview">
+                          <div className="segment-preview-info">
+                            {preview.rows.length} rows × {Math.max(...preview.rows.map((r) => r.length), 0)} cols
+                            {batchModal.files[0] && <> — from <strong>{batchModal.files[0].name}</strong></>}
+                          </div>
+                          <div className="segment-preview-table-wrap">
+                            <table className="segment-preview-table">
+                              <tbody>
+                                {preview.rows.map((row, ri) => (
+                                  <tr key={ri}>
+                                    <td className="segment-preview-rownum">{seg.startRow + ri}</td>
+                                    {row.map((cell, ci) => (
+                                      <td key={ci}>{cell != null ? String(cell) : ""}</td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Actions */}
+              <div className="batch-actions">
+                {!batchModal.uploading && (
+                  <button className="ghost small" onClick={openBatchPicker}>Re-pick files</button>
+                )}
+                <button
+                  className="primary"
+                  onClick={runBatchUpload}
+                  disabled={batchModal.uploading || !batchModal.uploadAs.trim()}
+                >
+                  {batchModal.uploading
+                    ? `Uploading ${batchModal.results.length}/${batchModal.files.length}…`
+                    : batchModal.segments.length > 0
+                      ? `Upload ${batchModal.files.length} × ${batchModal.segments.length} segments`
+                      : `Upload ${batchModal.files.length} file${batchModal.files.length !== 1 ? "s" : ""}`}
+                </button>
+              </div>
+
+              {/* Done summary */}
+              {!batchModal.uploading && batchModal.results.length === batchModal.files.length && batchModal.results.length > 0 && (
+                <div className="batch-summary">
+                  {batchModal.results.filter((r) => r.status === "ok").length} of {batchModal.files.length} uploaded successfully.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {deleteConfirm && (
+          <div className="batch-overlay" onClick={() => setDeleteConfirm(null)}>
+            <div className="batch-modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+              <div className="batch-modal-header">
+                <h3 className="batch-modal-title">Delete Required Feed?</h3>
+                <button className="ghost small" onClick={() => setDeleteConfirm(null)}><X className="icon-xs" /></button>
+              </div>
+              <div className="required-warning" style={{ margin: '1rem 0' }}>
+                ⚠ "{DATA_TYPE_META[deleteConfirm.dataType]?.label || deleteConfirm.dataType}" is a required data feed.
+                Deleting it means this feed will stop uploading until re-added. The entry will be recreated
+                (empty) next time the app starts, but your schedule and path settings will be lost.
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.5rem', paddingTop: '.5rem' }}>
+                <button className="ghost small" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                <button className="ghost small danger" onClick={() => { removeEntry(deleteConfirm.id); setDeleteConfirm(null); }}>Delete Anyway</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <footer className="footer-meta">
           Closing this window hides to the system tray — uploads keep running.
