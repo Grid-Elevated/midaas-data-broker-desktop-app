@@ -277,27 +277,27 @@ body {
   transition: background .3s;
 }
 
-/* ---- Data type stripe colors (applied when idle — state colors override below) ---- */
-.card-stripe.dt-yesterdaylog { background: rgba(245,158,11,.75); }
-.card-stripe.dt-tomorrowlog  { background: rgba(99,102,241,.75); }
-.card-stripe.dt-hydrodata    { background: rgba(14,165,233,.75); }
-.card-stripe.dt-yestermet     { background: rgba(236,72,153,.75); }
-.card-stripe.dt-auxdata      { background: rgba(16,185,129,.75); }
-
-/* State colors — placed AFTER type colors so they always win */
+/* State colors — only apply when no data-type stripe is set */
 .card-stripe.uploading { background: #eab308; }
 .card-stripe.ok        { background: var(--color-primary); }
 .card-stripe.error     { background: #ef4444; }
 
+/* ---- Data type stripe colors — always win over state colors ---- */
+.card-stripe.dt-yesterlog    { background: rgba(34,197,94,.40); }
+.card-stripe.dt-tomorrowlog  { background: rgba(56,189,248,.40); }
+.card-stripe.dt-hydrodata    { background: rgba(247,148,29,.40); }
+.card-stripe.dt-yestermet     { background: rgba(16,16,124,.40); }
+.card-stripe.dt-auxdata      { background: rgba(245,158,11,.40); }
+
 /* ---- Data type card border accents ---- */
-.card-dt-yesterdaylog { border-color: rgba(245,158,11,.35); }
-.card-dt-tomorrowlog  { border-color: rgba(99,102,241,.35); }
-.card-dt-hydrodata    { border-color: rgba(14,165,233,.35); }
-.card-dt-yestermet     { border-color: rgba(236,72,153,.35); }
-.card-dt-auxdata      { border-color: rgba(16,185,129,.25); }
+.card-dt-yesterlog    { border-color: rgba(34,197,94,.35); }
+.card-dt-tomorrowlog  { border-color: rgba(56,189,248,.35); }
+.card-dt-hydrodata    { border-color: rgba(247,148,29,.35); }
+.card-dt-yestermet     { border-color: rgba(16,16,124,.25); }
+.card-dt-auxdata      { border-color: rgba(245,158,11,.25); }
 
 /* Required feeds get a slightly wider stripe */
-.card-dt-yesterdaylog .card-stripe,
+.card-dt-yesterlog    .card-stripe,
 .card-dt-tomorrowlog  .card-stripe,
 .card-dt-hydrodata    .card-stripe,
 .card-dt-yestermet    .card-stripe { width: 6px; }
@@ -376,11 +376,11 @@ body {
 .badge.required  { background: rgba(124,58,237,.12); color: #5b21b6; }
 
 /* ---- Data type badge colors ---- */
-.badge.dt-yesterdaylog { background: rgba(245,158,11,.13); color: #78350f; border: 1px solid rgba(245,158,11,.3); }
-.badge.dt-tomorrowlog  { background: rgba(99,102,241,.12); color: #3730a3; border: 1px solid rgba(99,102,241,.28); }
-.badge.dt-hydrodata    { background: rgba(14,165,233,.12); color: #075985; border: 1px solid rgba(14,165,233,.28); }
-.badge.dt-yestermet     { background: rgba(236,72,153,.12); color: #831843; border: 1px solid rgba(236,72,153,.28); }
-.badge.dt-auxdata      { background: rgba(16,185,129,.12); color: #065f46; border: 1px solid rgba(16,185,129,.25); }
+.badge.dt-yesterlog    { background: rgba(34,197,94,.13); color: #14532d; border: 1px solid rgba(34,197,94,.3); }
+.badge.dt-tomorrowlog  { background: rgba(56,189,248,.12); color: #0c4a6e; border: 1px solid rgba(56,189,248,.28); }
+.badge.dt-hydrodata    { background: rgba(247,148,29,.13); color: #7c2d12; border: 1px solid rgba(247,148,29,.3); }
+.badge.dt-yestermet     { background: rgba(16,16,124,.10); color: #1e1b4b; border: 1px solid rgba(16,16,124,.25); }
+.badge.dt-auxdata      { background: rgba(245,158,11,.13); color: #78350f; border: 1px solid rgba(245,158,11,.3); }
 
 /* ---- Required feed warning ---- */
 .required-warning {
@@ -1084,7 +1084,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 999;
+  z-index: 1100;
 }
 .batch-modal {
   background: #fff;

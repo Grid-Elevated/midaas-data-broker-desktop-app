@@ -13,21 +13,24 @@ const STORE_KEY = "midaas-broker-config";
 const MAX_HISTORY = 10;
 
 /* ---- Required data feed types (always present, can't be deleted) ---- */
-const REQUIRED_DATA_TYPES = ["yesterdaylog", "tomorrowlog", "hydrodata", "yestermet"];
+const REQUIRED_DATA_TYPES = ["yesterlog", "tomorrowlog", "hydrodata", "yestermet"];
 
 /* ---- Data type metadata: friendly labels + color keys ---- */
 const DATA_TYPE_META = {
-  yesterdaylog: { label: "Yesterday Log", color: "amber"  },
-  tomorrowlog:  { label: "Tomorrow Log",  color: "indigo" },
+  yesterlog:    { label: "Yesterday Log", color: "green"  },
+  tomorrowlog:  { label: "Tomorrow Log",  color: "blue"   },
   hydrodata:    { label: "Hydro Data",    color: "cyan"   },
   yestermet:     { label: "Yesterday Met",  color: "rose"   },
-  auxdata:       { label: "Aux Data",      color: "green"  },
+  auxdata:       { label: "Aux Data",      color: "amber"  },
 };
 
 /* ---- Optional data type tags (user-created entries: only Aux Data) ---- */
 const OPTIONAL_DATA_TYPES = [
   { value: "auxdata", label: "Aux Data" },
 ];
+
+/* ---- All data type tags (for batch upload tag picker) ---- */
+const ALL_DATA_TYPES = Object.entries(DATA_TYPE_META).map(([value, meta]) => ({ value, label: meta.label }));
 
 function makeRequiredEntry(dataType) {
   return makeEntry({
@@ -141,7 +144,7 @@ async function uploadOneBlob(blob, uploadFileName, dataType, idToken, uploadDate
         "Content-Type": "application/json",
         "Authorization": `Bearer ${idToken}`,
       },
-      body: JSON.stringify({ facilityId: getCurrentUser()?.facilityId || "", fileName: uploadFileName, contentType: ct, ...(dataType ? { dataType } : {}), ...(uploadDate ? { uploadTimestamp: uploadDate } : {}) }),
+      body: JSON.stringify({ facilityId: getCurrentUser()?.facilityId || "", fileName: uploadFileName, contentType: ct, ...(dataType ? { dataType } : {}), ...(uploadDate ? { dataDate: uploadDate } : {}) }),
     });
   } catch (netErr) { throw new Error(`Network error (presign): ${netErr?.message || netErr}`); }
 
@@ -174,7 +177,7 @@ function makeEntry(overrides = {}) {
     path: "",
     sourceType: "file", // "file" or "folder"
     uploadAs: "",       // custom filename for S3 (used in folder mode)
-    dataType: null,     // "yesterdaylog" | "tomorrowlog" | "hydrodata" | "yesterlog" | "auxdata" | null — tags the upload so lambdas know what to consume
+    dataType: null,     // "yesterlog" | "tomorrowlog" | "hydrodata" | "yestermet" | "auxdata" | null — tags the upload so lambdas know what to consume
     startAt: "",
     intervalMin: 10,
     scheduleType: "interval", // "interval" or "scheduled"
@@ -308,22 +311,48 @@ function App() {
 
       const saved = await storage.get("entries");
       if (saved && saved.length > 0) {
-        const loaded = saved.map((e) => ({
-          ...makeEntry(),
-          ...e,
-          running: false,
-          lastStatus: e.lastStatus || "idle",
-          history: e.history || [],
-          segments: e.segments || [],
-          sourceType: e.sourceType || "file",
-          uploadAs: e.uploadAs || "",
-          dataType: e.dataType || null,
-          startAt: e.startAt || "",
-          scheduleType: e.scheduleType || "interval",
-          scheduleTimes: e.scheduleTimes || [],
-        }));
+        // Migrate legacy data type names
+        const MIGRATIONS = { yesterdaylog: "yesterlog" };
+        const loaded = saved.map((e) => {
+          const dt = MIGRATIONS[e.dataType] || e.dataType || null;
+          const ua = MIGRATIONS[e.dataType] ? `${dt}.xlsx` : (e.uploadAs || "");
+          return {
+            ...makeEntry(),
+            ...e,
+            running: false,
+            lastStatus: e.lastStatus || "idle",
+            history: e.history || [],
+            segments: e.segments || [],
+            sourceType: e.sourceType || "file",
+            uploadAs: ua,
+            dataType: dt,
+            startAt: e.startAt || "",
+            scheduleType: e.scheduleType || "interval",
+            scheduleTimes: e.scheduleTimes || [],
+          };
+        });
+        // Deduplicate required entries (keep the one with a path set, or the first)
+        const seen = new Set();
+        const deduped = loaded.filter((e) => {
+          if (REQUIRED_DATA_TYPES.includes(e.dataType)) {
+            if (seen.has(e.dataType)) return false;
+            seen.add(e.dataType);
+          }
+          return true;
+        });
+        // If two entries for same required type, prefer the one with a path
+        for (const dt of REQUIRED_DATA_TYPES) {
+          const matches = loaded.filter((e) => e.dataType === dt);
+          if (matches.length > 1) {
+            const withPath = matches.find((e) => e.path);
+            if (withPath) {
+              const idx = deduped.findIndex((e) => e.dataType === dt);
+              if (idx >= 0) deduped[idx] = withPath;
+            }
+          }
+        }
         // Ensure all required data feed entries are always present
-        const result = [...loaded];
+        const result = [...deduped];
         for (const dt of REQUIRED_DATA_TYPES) {
           if (!result.find((e) => e.dataType === dt)) {
             result.push(makeRequiredEntry(dt));
@@ -435,8 +464,8 @@ function App() {
       throw new Error(`Auth failed: ${authErr?.message || authErr}`);
     }
 
-    const uploadOneBlobForEntry = (uploadBlob, uploadFileName) =>
-      uploadOneBlob(uploadBlob, uploadFileName, entry.dataType, idToken);
+    const uploadOneBlobForEntry = (uploadBlob, uploadFileName, customDate) =>
+      uploadOneBlob(uploadBlob, uploadFileName, entry.dataType, idToken, customDate || new Date().toISOString());
 
     if (entry.segments && entry.segments.length > 0) {
       // Segment mode: slice each segment from the bytes we already read, then upload
@@ -449,12 +478,13 @@ function App() {
         fileBytes = new Uint8Array(await file.arrayBuffer());
       }
 
+      const isRequiredTag = REQUIRED_DATA_TYPES.includes(entry.dataType);
       const uploadedNames = [];
       for (const seg of entry.segments) {
         logMsg("info", `Slicing segment "${seg.name || seg.id}": rows ${seg.startRow}–${seg.endRow}`);
         const segBlob = buildSegmentBlob(fileBytes, seg);
         logMsg("info", `Segment blob size: ${segBlob.size} bytes`);
-        const segName = segmentFileName(fileName, seg.name || seg.id);
+        const segName = isRequiredTag ? `${entry.dataType}.xlsx` : segmentFileName(fileName, seg.name || seg.id);
         await uploadOneBlobForEntry(segBlob, segName);
         uploadedNames.push(segName);
       }
@@ -671,17 +701,20 @@ function App() {
         }
 
         if (segments.length > 0) {
+          const isRequiredTag = REQUIRED_DATA_TYPES.includes(batchModal.dataType);
           const uploadedSegs = [];
           for (const seg of segments) {
             const segBlob = buildSegmentBlob(fileBytes, seg);
-            const segName = segmentFileName(uploadAs, seg.name || seg.id);
-            await uploadOneBlob(segBlob, segName, batchModal.dataType, idToken, f.uploadDate ? new Date(f.uploadDate).toISOString() : undefined);
+            const segName = isRequiredTag ? `${batchModal.dataType}.xlsx` : segmentFileName(uploadAs, seg.name || seg.id);
+            const batchDate = f.uploadDate ? new Date(f.uploadDate).toISOString() : new Date().toISOString();
+            await uploadOneBlob(segBlob, segName, batchModal.dataType, idToken, batchDate);
             uploadedSegs.push(segName);
           }
           results.push({ name: f.name, status: "ok", msg: `${uploadedSegs.length} segment${uploadedSegs.length !== 1 ? "s" : ""}: ${uploadedSegs.join(", ")}` });
         } else {
           const blob = new Blob([fileBytes], { type: inferContentType(uploadAs) });
-          await uploadOneBlob(blob, uploadAs, batchModal.dataType, idToken, f.uploadDate ? new Date(f.uploadDate).toISOString() : undefined);
+          const batchDate = f.uploadDate ? new Date(f.uploadDate).toISOString() : new Date().toISOString();
+          await uploadOneBlob(blob, uploadAs, batchModal.dataType, idToken, batchDate);
           results.push({ name: f.name, status: "ok", msg: `Uploaded as ${uploadAs}` });
         }
       } catch (err) {
@@ -1047,7 +1080,6 @@ function App() {
             return label.includes(q) || file.includes(q) || fullPath.includes(q);
           }).map((entry) => {
             const isExpanded = expanded[entry.id];
-            const hasUnnamedSegments = (entry.segments || []).length > 0 && !(entry.segments || []).every((s) => s.name.trim());
             const statusClass =
               entry.lastStatus === "uploading" ? "state-loading" :
               entry.lastStatus === "error" ? "state-error" :
@@ -1083,14 +1115,8 @@ function App() {
                     <span className={`badge ${entry.lastStatus === "uploading" ? "loading" : entry.running ? "active" : entry.path ? "ready" : "idle"}`}>
                       {entry.lastStatus === "uploading" ? <><RefreshCw className="icon-xs spin" /> Uploading</> : entry.running ? <><Circle className="icon-xs" /> Active</> : entry.path ? (entry.sourceType === "folder" ? "Folder" : "File") : "No file"}
                     </span>
-                    {!entry.running && (
-                      <button className="ghost small danger card-delete-btn" onClick={() => {
-                        if (REQUIRED_DATA_TYPES.includes(entry.dataType)) {
-                          setDeleteConfirm({ id: entry.id, label: entry.label, dataType: entry.dataType });
-                        } else {
-                          removeEntry(entry.id);
-                        }
-                      }}><X className="icon-xs" /></button>
+                    {!entry.running && !REQUIRED_DATA_TYPES.includes(entry.dataType) && (
+                      <button className="ghost small danger card-delete-btn" onClick={() => removeEntry(entry.id)}><X className="icon-xs" /></button>
                     )}
                   </div>
 
@@ -1262,11 +1288,11 @@ function App() {
                         <span className="countdown-inline">Next: <strong className="countdown">{countdowns[entry.id]}</strong></span>
                       )}
                       {!entry.running ? (
-                        <button className="primary small" onClick={() => startOne(entry.id)} disabled={!entry.path || hasUnnamedSegments || (entry.scheduleType === "scheduled" && (!entry.scheduleTimes || entry.scheduleTimes.length === 0))}><Play className="icon-xs" /> Start</button>
+                        <button className="primary small" onClick={() => startOne(entry.id)} disabled={!entry.path || (entry.scheduleType === "scheduled" && (!entry.scheduleTimes || entry.scheduleTimes.length === 0))}><Play className="icon-xs" /> Start</button>
                       ) : (
                         <button className="primary small stop" onClick={() => stopOne(entry.id)}><Square className="icon-xs" /> Stop</button>
                       )}
-                      <button className="ghost small" onClick={() => runOne(entry.id)} disabled={!entry.path || entry.lastStatus === "uploading" || hasUnnamedSegments}><ArrowUp className="icon-xs" /> Now</button>
+                      <button className="ghost small" onClick={() => runOne(entry.id)} disabled={!entry.path || entry.lastStatus === "uploading"}><ArrowUp className="icon-xs" /> Now</button>
                     </div>
                   </div>
 
@@ -1386,10 +1412,17 @@ function App() {
           </div>
         </section>
 
-        {/* ---- Batch Upload Modal ---- */}
-        {batchModal && (
-          <div className="batch-overlay" onClick={() => !batchModal.uploading && setBatchModal(null)}>
-            <div className="batch-modal" onClick={(e) => e.stopPropagation()}>
+        <footer className="footer-meta">
+          Closing this window hides to the system tray — uploads keep running.
+          <br />
+          Right-click tray icon → <strong>Quit</strong> to fully stop.
+        </footer>
+      </main>
+
+      {/* ---- Batch Upload Modal (outside shell for z-index) ---- */}
+      {batchModal && (
+        <div className="batch-overlay" onClick={() => !batchModal.uploading && setBatchModal(null)}>
+          <div className="batch-modal" onClick={(e) => e.stopPropagation()}>
               <div className="batch-modal-header">
                 <div>
                   <h3 className="batch-modal-title">Batch Upload</h3>
@@ -1450,27 +1483,38 @@ function App() {
                 })}
               </div>
 
-              {/* Upload As */}
-              <div className="batch-upload-as">
-                <label>Upload as (S3 filename) <span className="batch-required">*</span></label>
-                <input
-                  type="text"
-                  placeholder="e.g. hydrodata.xlsx"
-                  value={batchModal.uploadAs}
-                  onChange={(e) => setBatchModal((prev) => ({ ...prev, uploadAs: e.target.value }))}
-                  disabled={batchModal.uploading}
-                />
-              </div>
+              {/* Upload As — only shown when no required tag is selected */}
+              {!REQUIRED_DATA_TYPES.includes(batchModal.dataType) && (
+                <div className="batch-upload-as">
+                  <label>Upload as (S3 filename) <span className="batch-required">*</span></label>
+                  <input
+                    type="text"
+                    placeholder="e.g. hydrodata.xlsx"
+                    value={batchModal.uploadAs}
+                    onChange={(e) => setBatchModal((prev) => ({ ...prev, uploadAs: e.target.value }))}
+                    disabled={batchModal.uploading}
+                  />
+                </div>
+              )}
 
-              {/* Optional data type tag */}
+              {/* Data type tag */}
               <div className="batch-tag-row">
-                <span className="batch-section-label">Tag (optional)</span>
+                <span className="batch-section-label">Upload Type</span>
                 <div className="datatype-options">
-                  {OPTIONAL_DATA_TYPES.map((dt) => (
+                  {ALL_DATA_TYPES.map((dt) => (
                     <button
                       key={dt.value}
                       className={`ghost small datatype-btn${batchModal.dataType === dt.value ? " active" : ""}`}
-                      onClick={() => setBatchModal((prev) => ({ ...prev, dataType: prev.dataType === dt.value ? null : dt.value }))}
+                      onClick={() => setBatchModal((prev) => {
+                        const deselecting = prev.dataType === dt.value;
+                        const newType = deselecting ? null : dt.value;
+                        const isRequired = REQUIRED_DATA_TYPES.includes(newType);
+                        return {
+                          ...prev,
+                          dataType: newType,
+                          uploadAs: isRequired ? `${newType}.xlsx` : (deselecting ? "" : prev.uploadAs),
+                        };
+                      })}
                       disabled={batchModal.uploading}
                     >
                       {dt.label}
@@ -1580,36 +1624,30 @@ function App() {
                   {batchModal.results.filter((r) => r.status === "ok").length} of {batchModal.files.length} uploaded successfully.
                 </div>
               )}
+          </div>
+        </div>
+      )}
+
+      {/* ---- Delete Confirm Modal (outside shell for z-index) ---- */}
+      {deleteConfirm && (
+        <div className="batch-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="batch-modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="batch-modal-header">
+              <h3 className="batch-modal-title">Delete Required Feed?</h3>
+              <button className="ghost small" onClick={() => setDeleteConfirm(null)}><X className="icon-xs" /></button>
+            </div>
+            <div className="required-warning" style={{ margin: '1rem 0' }}>
+              ⚠ "{DATA_TYPE_META[deleteConfirm.dataType]?.label || deleteConfirm.dataType}" is a required data feed.
+              Deleting it means this feed will stop uploading until re-added. The entry will be recreated
+              (empty) next time the app starts, but your schedule and path settings will be lost.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.5rem', paddingTop: '.5rem' }}>
+              <button className="ghost small" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button className="ghost small danger" onClick={() => { removeEntry(deleteConfirm.id); setDeleteConfirm(null); }}>Delete Anyway</button>
             </div>
           </div>
-        )}
-
-        {deleteConfirm && (
-          <div className="batch-overlay" onClick={() => setDeleteConfirm(null)}>
-            <div className="batch-modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
-              <div className="batch-modal-header">
-                <h3 className="batch-modal-title">Delete Required Feed?</h3>
-                <button className="ghost small" onClick={() => setDeleteConfirm(null)}><X className="icon-xs" /></button>
-              </div>
-              <div className="required-warning" style={{ margin: '1rem 0' }}>
-                ⚠ "{DATA_TYPE_META[deleteConfirm.dataType]?.label || deleteConfirm.dataType}" is a required data feed.
-                Deleting it means this feed will stop uploading until re-added. The entry will be recreated
-                (empty) next time the app starts, but your schedule and path settings will be lost.
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.5rem', paddingTop: '.5rem' }}>
-                <button className="ghost small" onClick={() => setDeleteConfirm(null)}>Cancel</button>
-                <button className="ghost small danger" onClick={() => { removeEntry(deleteConfirm.id); setDeleteConfirm(null); }}>Delete Anyway</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <footer className="footer-meta">
-          Closing this window hides to the system tray — uploads keep running.
-          <br />
-          Right-click tray icon → <strong>Quit</strong> to fully stop.
-        </footer>
-      </main>
+        </div>
+      )}
     </div>
   );
 }
