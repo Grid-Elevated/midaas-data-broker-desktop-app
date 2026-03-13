@@ -727,7 +727,11 @@ function App() {
   };
 
   const addBatchSegment = () => {
-    setBatchModal((prev) => ({ ...prev, segments: [...(prev.segments || []), { id: uid(), name: "", startRow: 1, endRow: 10 }] }));
+    setBatchModal((prev) => {
+      // Required types allow at most 1 segment
+      if (REQUIRED_DATA_TYPES.includes(prev.dataType) && prev.segments.length >= 1) return prev;
+      return { ...prev, segments: [...(prev.segments || []), { id: uid(), name: "", startRow: 1, endRow: 10 }] };
+    });
   };
 
   const removeBatchSegment = (segId) => {
@@ -793,6 +797,10 @@ function App() {
 
   const addSegment = (entryId) => {
     setEntries((prev) => {
+      const entry = prev.find((e) => e.id === entryId);
+      if (!entry) return prev;
+      // Required types allow at most 1 segment
+      if (REQUIRED_DATA_TYPES.includes(entry.dataType) && entry.segments.length >= 1) return prev;
       const next = prev.map((e) =>
         e.id === entryId
           ? { ...e, segments: [...e.segments, { id: uid(), name: "", startRow: 1, endRow: 10 }] }
@@ -1159,9 +1167,14 @@ function App() {
                         value={entry.uploadAs}
                         onChange={(e) => updateEntry(entry.id, "uploadAs", e.target.value)}
                         placeholder="hydro_data.xlsx"
-                        disabled={entry.running}
+                        disabled={entry.running || REQUIRED_DATA_TYPES.includes(entry.dataType)}
+                        readOnly={REQUIRED_DATA_TYPES.includes(entry.dataType)}
                       />
-                      <span className="uploadas-hint">S3 filename (newest file in folder will use this name)</span>
+                      <span className="uploadas-hint">
+                        {REQUIRED_DATA_TYPES.includes(entry.dataType)
+                          ? `Locked to ${entry.dataType}.xlsx for this required feed`
+                          : "S3 filename (newest file in folder will use this name)"}
+                      </span>
                     </div>
                   )}
 
@@ -1301,7 +1314,7 @@ function App() {
                     <div className="segments-header">
                       <span className="segments-title">Segments</span>
                       <span className="segments-hint">{(entry.segments || []).length === 0 ? "Uploads entire file" : `${entry.segments.length} segment${entry.segments.length > 1 ? "s" : ""}`}</span>
-                      <button className="ghost small" onClick={() => addSegment(entry.id)} disabled={entry.running}><Plus className="icon-xs" /> Segment</button>
+                      <button className="ghost small" onClick={() => addSegment(entry.id)} disabled={entry.running || (REQUIRED_DATA_TYPES.includes(entry.dataType) && (entry.segments || []).length >= 1)}><Plus className="icon-xs" /> Segment</button>
                     </div>
                     {(entry.segments || []).map((seg) => {
                       const previewKey = `${entry.id}-${seg.id}`;
@@ -1309,13 +1322,19 @@ function App() {
                       return (
                         <div className="segment-block" key={seg.id}>
                           <div className="segment-row">
-                            <input
-                              className="segment-name-input"
-                              value={seg.name}
-                              onChange={(e) => updateSegment(entry.id, seg.id, "name", e.target.value)}
-                              placeholder="Segment name…"
-                              disabled={entry.running}
-                            />
+                            {REQUIRED_DATA_TYPES.includes(entry.dataType) ? (
+                              <span className="segment-name-input" style={{ opacity: 0.6 }}>
+                                {entry.dataType}.xlsx
+                              </span>
+                            ) : (
+                              <input
+                                className="segment-name-input"
+                                value={seg.name}
+                                onChange={(e) => updateSegment(entry.id, seg.id, "name", e.target.value)}
+                                placeholder="Segment name…"
+                                disabled={entry.running}
+                              />
+                            )}
                             <label className="segment-range">
                               <span>Rows</span>
                               <input type="number" min={1} value={seg.startRow}
@@ -1341,7 +1360,7 @@ function App() {
                               <div className="segment-preview-info">
                                 {preview.rows.length} rows × {Math.max(...preview.rows.map((r) => r.length), 0)} cols
                                 {entry.sourceType === "folder" && preview.fileName && <> — from <strong>{preview.fileName}</strong></>}
-                                {" "}— uploads as <strong>{segmentFileName(entry.sourceType === "folder" && entry.uploadAs?.trim() ? entry.uploadAs.trim() : (preview.fileName || basename(entry.path)), seg.name || seg.id)}</strong>
+                                {" "}— uploads as <strong>{REQUIRED_DATA_TYPES.includes(entry.dataType) ? `${entry.dataType}.xlsx` : segmentFileName(entry.sourceType === "folder" && entry.uploadAs?.trim() ? entry.uploadAs.trim() : (preview.fileName || basename(entry.path)), seg.name || seg.id)}</strong>
                               </div>
                               <div className="segment-preview-table-wrap">
                                 <table className="segment-preview-table">
@@ -1513,6 +1532,7 @@ function App() {
                           ...prev,
                           dataType: newType,
                           uploadAs: isRequired ? `${newType}.xlsx` : (deselecting ? "" : prev.uploadAs),
+                          segments: isRequired ? prev.segments.slice(0, 1) : prev.segments,
                         };
                       })}
                       disabled={batchModal.uploading}
@@ -1529,7 +1549,7 @@ function App() {
                   <span className="batch-section-label">
                     Segments {batchModal.segments.length === 0 ? "— uploads whole file" : `(${batchModal.segments.length})`}
                   </span>
-                  {!batchModal.uploading && (
+                  {!batchModal.uploading && !(REQUIRED_DATA_TYPES.includes(batchModal.dataType) && batchModal.segments.length >= 1) && (
                     <button className="ghost small" onClick={addBatchSegment}>+ Segment</button>
                   )}
                 </div>
@@ -1541,13 +1561,19 @@ function App() {
                   return (
                     <div className="segment-block" key={seg.id}>
                       <div className="segment-row">
-                        <input
-                          className="segment-name-input"
-                          value={seg.name}
-                          onChange={(e) => updateBatchSegment(seg.id, "name", e.target.value)}
-                          placeholder="Segment name…"
-                          disabled={batchModal.uploading}
-                        />
+                        {REQUIRED_DATA_TYPES.includes(batchModal.dataType) ? (
+                          <span className="segment-name-input" style={{ opacity: 0.6 }}>
+                            {batchModal.dataType}.xlsx
+                          </span>
+                        ) : (
+                          <input
+                            className="segment-name-input"
+                            value={seg.name}
+                            onChange={(e) => updateBatchSegment(seg.id, "name", e.target.value)}
+                            placeholder="Segment name…"
+                            disabled={batchModal.uploading}
+                          />
+                        )}
                         <label className="segment-range">
                           <span>Rows</span>
                           <input type="number" min={1} value={seg.startRow}
@@ -1566,9 +1592,9 @@ function App() {
                           <button className="ghost small danger" onClick={() => removeBatchSegment(seg.id)}><X className="icon-xs" /></button>
                         )}
                       </div>
-                      {uploadedAs && (
+                      {(REQUIRED_DATA_TYPES.includes(batchModal.dataType) ? true : uploadedAs) && (
                         <div className="datatype-hint" style={{ paddingLeft: ".25rem" }}>
-                          uploads as <code>{uploadedAs}</code>
+                          uploads as <code>{REQUIRED_DATA_TYPES.includes(batchModal.dataType) ? `${batchModal.dataType}.xlsx` : uploadedAs}</code>
                           {batchModal.files.length > 1 && <> × {batchModal.files.length} files</>}
                         </div>
                       )}
