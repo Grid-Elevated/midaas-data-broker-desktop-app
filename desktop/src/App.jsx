@@ -4,7 +4,7 @@ import "./App.css";
 import { initAuth, login, logout, getValidIdToken, getCurrentUser } from "./auth";
 import {
   Lock, Hash, Upload, X, Play, Square, ArrowUp, ChevronDown, ChevronRight,
-  Check, Circle, RefreshCw, Plus, Search,
+  Check, Circle, RefreshCw, Plus, Search, Download,
 } from "lucide-react";
 
 const API_BASE =
@@ -47,11 +47,12 @@ function makeRequiredEntry(dataType) {
 const IS_TAURI = !!(window.__TAURI_INTERNALS__);
 
 /* ---- Lazy-load Tauri plugins (only when inside Tauri) ---- */
-let tauriDialog, tauriFs, tauriStore;
+let tauriDialog, tauriFs, tauriStore, tauriUpdater;
 if (IS_TAURI) {
   tauriDialog = await import("@tauri-apps/plugin-dialog");
   tauriFs = await import("@tauri-apps/plugin-fs");
   tauriStore = await import("@tauri-apps/plugin-store");
+  tauriUpdater = await import("@tauri-apps/plugin-updater");
 }
 
 /* ---- Storage abstraction (Tauri store vs localStorage) ---- */
@@ -272,6 +273,10 @@ function App() {
   const [batchPreviews, setBatchPreviews] = useState({}); // segId → { rows, error }
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
+  /* ---- updater state ---- */
+  const [updateAvailable, setUpdateAvailable] = useState(null); // null | { version, body, update }
+  const [updateStatus, setUpdateStatus] = useState(""); // "" | "downloading" | "installing" | "error"
+
   /* ---- auth state ---- */
   const [authed, setAuthed] = useState(false);
   const [authUser, setAuthUser] = useState(null);
@@ -369,6 +374,21 @@ function App() {
         setEntries(REQUIRED_DATA_TYPES.map(makeRequiredEntry));
       }
       setStoreReady(true);
+
+      // Check for app updates (non-blocking)
+      if (IS_TAURI && tauriUpdater) {
+        try {
+          const update = await tauriUpdater.check();
+          if (update) {
+            logMsg("info", `Update available: v${update.version}`);
+            setUpdateAvailable({ version: update.version, body: update.body || "", update });
+          } else {
+            logMsg("info", "App is up to date");
+          }
+        } catch (e) {
+          logMsg("error", "Update check failed:", e?.message || e);
+        }
+      }
     })();
   }, []);
 
@@ -967,6 +987,21 @@ function App() {
     setAuthUser(null);
   };
 
+  const installUpdate = async () => {
+    if (!updateAvailable?.update) return;
+    setUpdateStatus("downloading");
+    try {
+      await updateAvailable.update.downloadAndInstall((progress) => {
+        if (progress?.event === "Started") logMsg("info", `Downloading update: ${progress.data?.contentLength || "?"} bytes`);
+      });
+      setUpdateStatus("installing");
+      // Tauri will restart the app automatically after install
+    } catch (e) {
+      logMsg("error", "Update install failed:", e?.message || e);
+      setUpdateStatus("error");
+    }
+  };
+
   /* ---- render ---------------------------------------------------- */
 
   if (!storeReady) return <div className="app"><p style={{ padding: "2rem" }}>Loading…</p></div>;
@@ -1021,6 +1056,22 @@ function App() {
 
   return (
     <div className="app">
+      {updateAvailable && (
+        <div className="update-banner">
+          <span>
+            <Download className="icon-xs" />{" "}
+            Version {updateAvailable.version} is available
+            {updateAvailable.body ? ` — ${updateAvailable.body}` : ""}
+          </span>
+          {updateStatus === "" && (
+            <button className="update-btn" onClick={installUpdate}>Update &amp; restart</button>
+          )}
+          {updateStatus === "downloading" && <span className="update-progress">Downloading…</span>}
+          {updateStatus === "installing" && <span className="update-progress">Installing — restarting…</span>}
+          {updateStatus === "error" && <span className="update-progress update-error">Update failed. Try again later.</span>}
+          <button className="update-dismiss" onClick={() => setUpdateAvailable(null)}><X className="icon-xs" /></button>
+        </div>
+      )}
       <div className="backdrop" />
       <main className="shell shell--hero">
         <header className="hero" ref={heroRef}>
