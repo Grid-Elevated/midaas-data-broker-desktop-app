@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Upload } from "lucide-react";
+import { Plus } from "lucide-react";
 import "./App.css";
 
 import { storage, basename } from "./constants";
@@ -7,13 +7,13 @@ import { useEntries } from "./hooks/useEntries";
 import { useScheduler } from "./hooks/useScheduler";
 import { useAuth } from "./hooks/useAuth";
 import { useUpdater } from "./hooks/useUpdater";
-import { useBatchUpload } from "./hooks/useBatchUpload";
+// import { useBatchUpload } from "./hooks/useBatchUpload";
 
 import LoginScreen from "./components/LoginScreen";
 import UpdateBanner from "./components/UpdateBanner";
 import StatusBar from "./components/StatusBar";
 import EntryCard from "./components/EntryCard";
-import BatchUploadModal from "./components/BatchUploadModal";
+// import BatchUploadModal from "./components/BatchUploadModal";
 import DeleteConfirmModal from "./components/DeleteConfirmModal";
 
 function App() {
@@ -37,14 +37,14 @@ function App() {
     initializeAuth, handleLogin, handleLogout,
   } = useAuth();
 
-  const { updateAvailable, setUpdateAvailable, updateStatus, installUpdate, checkForUpdates } = useUpdater();
+  const { updateAvailable, setUpdateAvailable, updateStatus, versionStatus, appVersion, installUpdate, checkForUpdates } = useUpdater();
 
-  const {
-    batchModal, setBatchModal, batchPreviews,
-    openBatchPicker, runBatchUpload,
-    addBatchSegment, removeBatchSegment, updateBatchSegment,
-    toggleBatchPreview,
-  } = useBatchUpload();
+  // const {
+  //   batchModal, setBatchModal, batchPreviews,
+  //   openBatchPicker, runBatchUpload,
+  //   addBatchSegment, removeBatchSegment, updateBatchSegment,
+  //   toggleBatchPreview,
+  // } = useBatchUpload();
 
   /* ---- sticky header state ---- */
   const heroRef = useRef(null);
@@ -107,7 +107,14 @@ function App() {
             <img src="/Grid_logo_mark.png" alt="Grid logo" className="logo-img" />
             <span className="logo-text">MIDAAS</span>
           </div>
-          <h1>Automated File Upload</h1>
+          <h1 style={{ display: "flex", alignItems: "baseline", gap: ".6rem" }}>
+            Automated File Upload
+            <span style={{ fontSize: ".55em", fontWeight: 400, color: "#c0c6cc" }}>
+              {versionStatus === "checking" && "searching for newer version…"}
+              {versionStatus === "up_to_date" && `v${appVersion}`}
+              {versionStatus === "update_available" && "newer version available"}
+            </span>
+          </h1>
           <p className="subhead">
             Add files, set individual upload schedules, and let the broker run.
             Close the window — it keeps uploading from the system tray.
@@ -123,7 +130,6 @@ function App() {
         search={search}
         setSearch={setSearch}
         addEntry={addEntry}
-        openBatchPicker={openBatchPicker}
         handleLogout={() => handleLogout(entries, stopOne)}
       />
 
@@ -167,10 +173,10 @@ function App() {
               <span className="add-icon"><Plus /></span>
               <span>Add Folder</span>
             </button>
-            <button className="add-card" onClick={openBatchPicker}>
+            {/* <button className="add-card" onClick={openBatchPicker}>
               <span className="add-icon"><Upload /></span>
               <span>Batch Upload</span>
-            </button>
+            </button> */}
           </div>
         </section>
 
@@ -181,7 +187,7 @@ function App() {
         </footer>
       </main>
 
-      <BatchUploadModal
+      {/* <BatchUploadModal
         batchModal={batchModal}
         setBatchModal={setBatchModal}
         batchPreviews={batchPreviews}
@@ -191,7 +197,7 @@ function App() {
         removeBatchSegment={removeBatchSegment}
         updateBatchSegment={updateBatchSegment}
         toggleBatchPreview={toggleBatchPreview}
-      />
+      /> */}
 
       <DeleteConfirmModal
         deleteConfirm={deleteConfirm}

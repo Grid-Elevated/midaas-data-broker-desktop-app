@@ -1,10 +1,10 @@
-import { Plus, Upload, Search, X } from "lucide-react";
+import { Plus, /* Upload, */ Search, X } from "lucide-react";
 import { IS_TAURI } from "../constants";
 
 export default function StatusBar({
   entries, authUser, isSticky, statusRef,
   search, setSearch,
-  addEntry, openBatchPicker, handleLogout,
+  addEntry, /* openBatchPicker, */ handleLogout,
 }) {
   const runningCount = entries.filter((e) => e.running).length;
 
@@ -31,7 +31,7 @@ export default function StatusBar({
           <button className="ghost small" onClick={handleLogout}>Sign Out</button>
           <button className="ghost small add-btn" onClick={() => addEntry("file")}><Plus className="icon-xs" /> Add File</button>
           <button className="ghost small add-btn" onClick={() => addEntry("folder")}><Plus className="icon-xs" /> Add Folder</button>
-          <button className="ghost small add-btn" onClick={openBatchPicker}><Upload className="icon-xs" /> Batch Upload</button>
+          {/* <button className="ghost small add-btn" onClick={openBatchPicker}><Upload className="icon-xs" /> Batch Upload</button> */}
         </section>
 
         <div className="search-bar">
