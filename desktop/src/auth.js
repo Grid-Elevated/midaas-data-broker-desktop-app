@@ -13,6 +13,10 @@ let _tokens = { idToken: null, accessToken: null, refreshToken: null, expiresAt:
 /* ---- storage ref (set from App via init) ---- */
 let _storage = null;
 
+/* ---- background refresh ---- */
+let _refreshInterval = null;
+const REFRESH_INTERVAL_MS = 50 * 60 * 1000; // 50 minutes (access tokens expire in 60)
+
 /* ---- helpers ---- */
 
 function decodeJwtPayload(token) {
@@ -170,4 +174,95 @@ export function getCurrentUser() {
     email: payload.email || "",
     facilityId: groups[0] || "",
   };
+}
+
+/**
+ * Start a background interval that silently refreshes the access token
+ * every 50 minutes. Also handles wake-from-sleep via visibilitychange.
+ */
+export function startBackgroundRefresh() {
+  stopBackgroundRefresh();
+
+  const doRefresh = async () => {
+    if (!_tokens.refreshToken) return;
+    try {
+      if (isTokenExpired(_tokens.idToken)) {
+        console.log("[auth] Background refresh — token expired, refreshing…");
+        await refreshSession();
+      }
+    } catch (err) {
+      console.warn("[auth] Background refresh failed:", err.message);
+      // If refresh token itself is dead, try stored credentials
+      await _tryReloginFromStoredCredentials();
+    }
+  };
+
+  // Interval for normal operation
+  _refreshInterval = setInterval(doRefresh, REFRESH_INTERVAL_MS);
+
+  // Wake-from-sleep / tab-focus handler — fires immediately on resume
+  document.addEventListener("visibilitychange", _onVisibilityChange);
+  window.addEventListener("focus", _onWindowFocus);
+}
+
+export function stopBackgroundRefresh() {
+  if (_refreshInterval) {
+    clearInterval(_refreshInterval);
+    _refreshInterval = null;
+  }
+  document.removeEventListener("visibilitychange", _onVisibilityChange);
+  window.removeEventListener("focus", _onWindowFocus);
+}
+
+async function _onVisibilityChange() {
+  if (document.visibilityState === "visible" && _tokens.refreshToken) {
+    await _silentRefresh();
+  }
+}
+
+async function _onWindowFocus() {
+  if (_tokens.refreshToken) {
+    await _silentRefresh();
+  }
+}
+
+async function _silentRefresh() {
+  try {
+    if (isTokenExpired(_tokens.idToken)) {
+      console.log("[auth] Visibility/focus refresh…");
+      await refreshSession();
+    }
+  } catch (err) {
+    console.warn("[auth] Focus refresh failed:", err.message);
+    await _tryReloginFromStoredCredentials();
+  }
+}
+
+/** Store credentials so we can silently re-login when the refresh token expires */
+export async function storeCredentials(username, password) {
+  if (_storage) await _storage.set("auth_creds", { username, password });
+}
+
+/** Clear stored credentials (on explicit logout) */
+export async function clearCredentials() {
+  if (_storage) await _storage.set("auth_creds", null);
+}
+
+/** Attempt silent re-login using stored credentials */
+async function _tryReloginFromStoredCredentials() {
+  if (!_storage) return false;
+  const creds = await _storage.get("auth_creds");
+  if (!creds?.username || !creds?.password) {
+    console.warn("[auth] No stored credentials — user must re-login manually");
+    return false;
+  }
+  try {
+    console.log("[auth] Refresh token expired — re-authenticating with stored credentials…");
+    await login(creds.username, creds.password);
+    console.log("[auth] Silent re-login successful");
+    return true;
+  } catch (err) {
+    console.error("[auth] Silent re-login failed:", err.message);
+    return false;
+  }
 }
