@@ -73,7 +73,21 @@ export async function uploadFile(entry) {
   let actualPath = entry.path;
   let rawBytes;
 
-  if (IS_TAURI) {
+  if (IS_TAURI && entry.sourceType === "url") {
+    const url = entry.path?.trim();
+    if (!url) return { status: "error", msg: "No URL set" };
+    const urlFileName = url.split("/").pop()?.split("?")[0] || "download";
+    fileName = entry.uploadAs?.trim() || urlFileName;
+    logMsg("info", `URL mode: fetching "${url}", uploading as "${fileName}"`);
+    let urlRes;
+    try {
+      urlRes = await fetch(url);
+    } catch (netErr) { throw new Error(`Network error fetching URL: ${netErr?.message || netErr}`); }
+    if (!urlRes.ok) throw new Error(`URL fetch failed [${urlRes.status}]: ${url}`);
+    blob = await urlRes.blob();
+    if (blob.size === 0) throw new Error(`URL returned empty file: ${url}`);
+    logMsg("info", `Fetched ${blob.size} bytes from URL`);
+  } else if (IS_TAURI) {
     if (entry.sourceType === "folder") {
       const newest = await findNewestFile(entry.path);
       actualPath = newest.path;

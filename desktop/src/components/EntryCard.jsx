@@ -32,7 +32,7 @@ export default function EntryCard({
               className="card-label"
               value={entry.label}
               onChange={(e) => updateEntry(entry.id, "label", e.target.value)}
-              placeholder={entry.sourceType === "folder" ? "Folder label…" : "File label…"}
+              placeholder={entry.sourceType === "folder" ? "Folder label…" : entry.sourceType === "url" ? "URL label…" : "File label…"}
               disabled={entry.running}
             />
             <span className="card-last-upload">Last: {fmtDate(entry.lastUpload)}</span>
@@ -47,7 +47,7 @@ export default function EntryCard({
             </span>
           )}
           <span className={`badge ${entry.lastStatus === "uploading" ? "loading" : entry.running ? "active" : entry.path ? "ready" : "idle"}`}>
-            {entry.lastStatus === "uploading" ? <><RefreshCw className="icon-xs spin" /> Uploading</> : entry.running ? <><Circle className="icon-xs" /> Active</> : entry.path ? (entry.sourceType === "folder" ? "Folder" : "File") : "No file"}
+            {entry.lastStatus === "uploading" ? <><RefreshCw className="icon-xs spin" /> Uploading</> : entry.running ? <><Circle className="icon-xs" /> Active</> : entry.path ? (entry.sourceType === "folder" ? "Folder" : entry.sourceType === "url" ? "URL" : "File") : "No file"}
           </span>
           {!entry.running && !REQUIRED_DATA_TYPES.includes(entry.dataType) && (
             <button className="ghost small danger card-delete-btn" onClick={() => removeEntry(entry.id)}><X className="icon-xs" /></button>
@@ -61,17 +61,30 @@ export default function EntryCard({
           </div>
         )}
 
-        {/* Row 2: file/folder path */}
-        <div className="card-path-row">
-          <span className="card-path" title={entry.path}>
-            {entry.path || (entry.sourceType === "folder" ? "No folder selected" : "No file selected")}
-          </span>
-          <button className="ghost small" onClick={() => pickFile(entry.id)} disabled={entry.running}>
-            {REQUIRED_DATA_TYPES.includes(entry.dataType)
-              ? (entry.path ? "Change File" : "Set File")
-              : "Browse"}
-          </button>
-        </div>
+        {/* Row 2: file/folder/url path */}
+        {entry.sourceType === "url" ? (
+          <div className="card-path-row">
+            <input
+              className="card-path"
+              value={entry.path || ""}
+              onChange={(e) => updateEntry(entry.id, "path", e.target.value)}
+              placeholder="https://example.com/data/file.xlsx"
+              disabled={entry.running}
+              style={{ flex: 1 }}
+            />
+          </div>
+        ) : (
+          <div className="card-path-row">
+            <span className="card-path" title={entry.path}>
+              {entry.path || (entry.sourceType === "folder" ? "No folder selected" : "No file selected")}
+            </span>
+            <button className="ghost small" onClick={() => pickFile(entry.id)} disabled={entry.running}>
+              {REQUIRED_DATA_TYPES.includes(entry.dataType)
+                ? (entry.path ? "Change File" : "Set File")
+                : "Browse"}
+            </button>
+          </div>
+        )}
 
         <div className="card-source-toggle">
           <button className={`schedule-tab${entry.sourceType === 'file' ? ' active' : ''}`}
@@ -82,10 +95,14 @@ export default function EntryCard({
             onClick={() => updateEntry(entry.id, 'sourceType', 'folder')} disabled={entry.running}>
             Folder
           </button>
+          <button className={`schedule-tab${entry.sourceType === 'url' ? ' active' : ''}`}
+            onClick={() => updateEntry(entry.id, 'sourceType', 'url')} disabled={entry.running}>
+            URL
+          </button>
         </div>
 
-        {/* Upload-as filename (for folder mode) */}
-        {entry.sourceType === "folder" && (
+        {/* Upload-as filename (for folder/url mode) */}
+        {(entry.sourceType === "folder" || entry.sourceType === "url") && (
           <div className="card-uploadas-row">
             <span className="uploadas-label">Upload as:</span>
             <input
@@ -99,7 +116,9 @@ export default function EntryCard({
             <span className="uploadas-hint">
               {REQUIRED_DATA_TYPES.includes(entry.dataType)
                 ? `Locked to ${entry.dataType}.xlsx for this required feed`
-                : "S3 filename (newest file in folder will use this name)"}
+                : entry.sourceType === "url"
+                  ? "S3 filename (leave blank to use filename from URL)"
+                  : "S3 filename (newest file in folder will use this name)"}
             </span>
           </div>
         )}
@@ -151,11 +170,11 @@ export default function EntryCard({
               <span className="countdown-inline">Next: <strong className="countdown">{countdowns[entry.id]}</strong></span>
             )}
             {!entry.running ? (
-              <button className="primary small" onClick={() => startOne(entry.id)} disabled={!entry.path || (entry.scheduleType === "scheduled" && (!entry.scheduleTimes || entry.scheduleTimes.length === 0))}><Play className="icon-xs" /> Start</button>
+              <button className="primary small" onClick={() => startOne(entry.id)} disabled={!entry.path?.trim() || (entry.scheduleType === "scheduled" && (!entry.scheduleTimes || entry.scheduleTimes.length === 0))}><Play className="icon-xs" /> Start</button>
             ) : (
               <button className="primary small stop" onClick={() => stopOne(entry.id)}><Square className="icon-xs" /> Stop</button>
             )}
-            <button className="ghost small" onClick={() => runOne(entry.id)} disabled={!entry.path || entry.lastStatus === "uploading"}><ArrowUp className="icon-xs" /> Now</button>
+            <button className="ghost small" onClick={() => runOne(entry.id)} disabled={!entry.path?.trim() || entry.lastStatus === "uploading"}><ArrowUp className="icon-xs" /> Now</button>
           </div>
         </div>
 
