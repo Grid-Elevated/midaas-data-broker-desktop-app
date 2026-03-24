@@ -81,7 +81,8 @@ export async function uploadFile(entry) {
     logMsg("info", `URL mode: fetching "${url}", uploading as "${fileName}"`);
     let urlRes;
     try {
-      urlRes = await fetch(url);
+      const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+      urlRes = await tauriFetch(url);
     } catch (netErr) { throw new Error(`Network error fetching URL: ${netErr?.message || netErr}`); }
     if (!urlRes.ok) throw new Error(`URL fetch failed [${urlRes.status}]: ${url}`);
     blob = await urlRes.blob();

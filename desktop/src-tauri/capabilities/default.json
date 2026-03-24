@@ -24,6 +24,7 @@
     },
     "dialog:default",
     "dialog:allow-open",
-    "store:default"
+    "store:default",
+    "http:default"
   ]
 }
