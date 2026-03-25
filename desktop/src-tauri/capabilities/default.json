@@ -25,6 +25,15 @@
     "dialog:default",
     "dialog:allow-open",
     "store:default",
-    "http:default"
+    "http:default",
+    {
+      "identifier": "http:allow-fetch",
+      "allow": [
+        { "url": "https://**" },
+        { "url": "http://localhost:*/**" }
+      ]
+    },
+    "http:allow-fetch-send",
+    "http:allow-fetch-read-body"
   ]
 }
