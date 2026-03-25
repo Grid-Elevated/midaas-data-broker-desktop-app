@@ -36,6 +36,14 @@
     "createUpdaterArtifacts": true
   },
   "plugins": {
+    "http": {
+      "scope": {
+        "allow": [
+          "https://**",
+          "http://localhost:*/**"
+        ]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/Grid-Elevated/midaas-data-broker-desktop-app/releases/latest/download/latest.json"
