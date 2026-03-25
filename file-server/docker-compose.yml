@@ -1,0 +1,8 @@
+services:
+  heber-file-server:
+    build: .
+    container_name: heber-mock-server
+    ports:
+      - "8080:80"
+    volumes:
+      - ./files:/usr/local/apache2/htdocs/members/heber
