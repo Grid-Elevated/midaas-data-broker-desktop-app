@@ -82,7 +82,7 @@ export async function uploadFile(entry) {
     let urlRes;
     try {
       const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-      urlRes = await tauriFetch(url);
+      urlRes = await tauriFetch(url, { danger: { acceptInvalidCerts: true } });
     } catch (netErr) { throw new Error(`Network error fetching URL: ${netErr?.message || netErr}`); }
     if (!urlRes.ok) throw new Error(`URL fetch failed [${urlRes.status}]: ${url}`);
     blob = await urlRes.blob();
