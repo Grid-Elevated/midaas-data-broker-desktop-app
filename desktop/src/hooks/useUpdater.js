@@ -2,13 +2,18 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { IS_TAURI, tauriUpdater, logMsg } from "../constants";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // every 30 minutes
-const APP_VERSION = "0.2.8";
 
 export function useUpdater() {
   const [updateAvailable, setUpdateAvailable] = useState(null);
   const [updateStatus, setUpdateStatus] = useState("");
   const [versionStatus, setVersionStatus] = useState("checking"); // "checking" | "up_to_date" | "update_available"
+  const [appVersion, setAppVersion] = useState("");
   const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    import("@tauri-apps/api/app").then(({ getVersion }) => getVersion().then(setAppVersion)).catch(() => {});
+  }, []);
 
   const checkForUpdates = useCallback(async () => {
     if (!IS_TAURI || !tauriUpdater) return;
@@ -62,5 +67,5 @@ export function useUpdater() {
     }
   }, [updateAvailable]);
 
-  return { updateAvailable, setUpdateAvailable, updateStatus, versionStatus, appVersion: APP_VERSION, installUpdate, checkForUpdates };
+  return { updateAvailable, setUpdateAvailable, updateStatus, versionStatus, appVersion, installUpdate, checkForUpdates };
 }
