@@ -169,10 +169,12 @@ export function getCurrentUser() {
   const payload = decodeJwtPayload(_tokens.idToken);
   if (!payload) return null;
   const groups = payload["cognito:groups"] || [];
+  const rawFacilityId = groups[0] || "";
+  const facilityId = rawFacilityId.replace(/_admin$/, "");
   return {
     username: payload["cognito:username"] || payload.sub || "",
     email: payload.email || "",
-    facilityId: groups[0] || "",
+    facilityId,
   };
 }
 
