@@ -4,14 +4,16 @@ import { API_BASE, IS_TAURI, tauriFs, inferContentType, logMsg, basename, REQUIR
 export async function uploadOneBlob(blob, uploadFileName, dataType, idToken, uploadDate) {
   const ct = inferContentType(uploadFileName);
   logMsg("info", `Requesting presigned URL for "${uploadFileName}"`);
+
+  const doFetch = IS_TAURI
+    ? async (url, opts) => { const { fetch: f } = await import("@tauri-apps/plugin-http"); return f(url, opts); }
+    : (url, opts) => fetch(url, opts);
+
   let res;
   try {
-    res = await fetch(`${API_BASE}/datasets/upload`, {
+    res = await doFetch(`${API_BASE}/datasets/upload`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${idToken}`,
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
       body: JSON.stringify({ facilityId: getCurrentUser()?.facilityId || "", fileName: uploadFileName, contentType: ct, ...(dataType ? { dataType } : {}), ...(uploadDate ? { dataDate: uploadDate } : {}) }),
     });
   } catch (netErr) { throw new Error(`Network error (presign): ${netErr?.message || netErr}`); }
@@ -25,9 +27,11 @@ export async function uploadOneBlob(blob, uploadFileName, dataType, idToken, upl
 
   logMsg("info", `Got presigned URL, key=${data.key}`);
   logMsg("info", `Uploading ${blob.size} bytes to S3…`);
+
+  const putBody = IS_TAURI ? new Uint8Array(await blob.arrayBuffer()) : blob;
   let put;
   try {
-    put = await fetch(data.uploadUrl, { method: "PUT", headers: data.requiredHeaders, body: blob });
+    put = await doFetch(data.uploadUrl, { method: "PUT", headers: data.requiredHeaders, body: putBody });
   } catch (s3Err) { throw new Error(`Network error (S3 PUT): ${s3Err?.message || s3Err}`); }
 
   if (!put.ok) {

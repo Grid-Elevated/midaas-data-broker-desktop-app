@@ -28,7 +28,10 @@
     "http:default",
     {
       "identifier": "http:allow-fetch",
-      "allow": [{ "url": "http://localhost:*/**" }]
+      "allow": [
+        { "url": "*://*" },
+        { "url": "*://*:*" }
+      ]
     },
     "http:allow-fetch-send",
     "http:allow-fetch-read-body"

@@ -4,5 +4,6 @@ services:
     container_name: heber-mock-server
     ports:
       - "8080:80"
+      - "8443:443"
     volumes:
       - ./files:/usr/local/apache2/htdocs/members/heber
