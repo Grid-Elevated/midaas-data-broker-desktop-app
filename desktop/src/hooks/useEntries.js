@@ -1,17 +1,14 @@
 import { useState, useCallback, useRef } from "react";
-import * as XLSX from "xlsx";
 import {
-  storage, REQUIRED_DATA_TYPES, DATA_TYPE_META, OPTIONAL_DATA_TYPES,
-  MAX_HISTORY, makeEntry, makeRequiredEntry, uid, basename,
-  IS_TAURI, tauriFs, tauriDialog,
+  storage, REQUIRED_DATA_TYPES,
+  MAX_HISTORY, makeEntry, makeRequiredEntry, basename,
+  IS_TAURI, tauriDialog,
 } from "../constants";
-import { findNewestFile } from "../upload";
 
 export function useEntries() {
   const [entries, setEntries] = useState([]);
   const [storeReady, setStoreReady] = useState(false);
   const [expanded, setExpanded] = useState({});
-  const [previews, setPreviews] = useState({});
   const [search, setSearch] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const entriesRef = useRef(entries);
@@ -19,8 +16,8 @@ export function useEntries() {
   const browserFilesRef = useRef({});
 
   const persist = useCallback(async (list) => {
-    const toSave = list.map(({ id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history, segments }) => ({
-      id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history: (history || []).slice(0, MAX_HISTORY), segments: segments || [],
+    const toSave = list.map(({ id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history }) => ({
+      id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history: (history || []).slice(0, MAX_HISTORY),
     }));
     await storage.set("entries", toSave);
   }, []);
@@ -38,7 +35,6 @@ export function useEntries() {
           running: false,
           lastStatus: e.lastStatus || "idle",
           history: e.history || [],
-          segments: e.segments || [],
           sourceType: e.sourceType || "file",
           uploadAs: ua,
           dataType: dt,
@@ -111,93 +107,6 @@ export function useEntries() {
     });
   }, [persist]);
 
-  const addSegment = useCallback((entryId) => {
-    setEntries((prev) => {
-      const entry = prev.find((e) => e.id === entryId);
-      if (!entry) return prev;
-      if (REQUIRED_DATA_TYPES.includes(entry.dataType) && entry.segments.length >= 1) return prev;
-      const next = prev.map((e) =>
-        e.id === entryId
-          ? { ...e, segments: [...e.segments, { id: uid(), name: "", startRow: 1, endRow: 10 }] }
-          : e
-      );
-      persist(next);
-      return next;
-    });
-  }, [persist]);
-
-  const removeSegment = useCallback((entryId, segId) => {
-    setEntries((prev) => {
-      const next = prev.map((e) =>
-        e.id === entryId
-          ? { ...e, segments: e.segments.filter((s) => s.id !== segId) }
-          : e
-      );
-      persist(next);
-      return next;
-    });
-  }, [persist]);
-
-  const loadPreview = useCallback(async (entry, seg) => {
-    const key = `${entry.id}-${seg.id}`;
-    try {
-      let fileBytes;
-      let previewFileName;
-      if (IS_TAURI) {
-        if (!entry.path) throw new Error("No file or folder selected");
-        let filePath = entry.path;
-        if (entry.sourceType === "folder") {
-          const newest = await findNewestFile(entry.path);
-          filePath = newest.path;
-          previewFileName = newest.name;
-        } else {
-          previewFileName = basename(entry.path);
-        }
-        fileBytes = await tauriFs.readFile(filePath);
-      } else {
-        const file = entry._browserFile;
-        if (!file) throw new Error("No file selected");
-        previewFileName = file.name;
-        fileBytes = new Uint8Array(await file.arrayBuffer());
-      }
-      const wb = XLSX.read(fileBytes, { type: "array" });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-      const sliced = allRows.slice(seg.startRow - 1, seg.endRow);
-      setPreviews((p) => ({ ...p, [key]: { rows: sliced, error: null, fileName: previewFileName } }));
-    } catch (err) {
-      setPreviews((p) => ({ ...p, [key]: { rows: null, error: err.message || String(err) } }));
-    }
-  }, []);
-
-  const updateSegment = useCallback((entryId, segId, field, value) => {
-    setEntries((prev) => {
-      const next = prev.map((e) =>
-        e.id === entryId
-          ? { ...e, segments: e.segments.map((s) => (s.id === segId ? { ...s, [field]: value } : s)) }
-          : e
-      );
-      persist(next);
-      if (field === "startRow" || field === "endRow") {
-        const entry = next.find((e) => e.id === entryId);
-        const seg = entry?.segments.find((s) => s.id === segId);
-        if (entry && seg && previews[`${entryId}-${segId}`]) {
-          loadPreview(entry, seg);
-        }
-      }
-      return next;
-    });
-  }, [persist, previews, loadPreview]);
-
-  const togglePreview = useCallback((entry, seg) => {
-    const key = `${entry.id}-${seg.id}`;
-    if (previews[key]) {
-      setPreviews((p) => { const n = { ...p }; delete n[key]; return n; });
-    } else {
-      loadPreview(entry, seg);
-    }
-  }, [previews, loadPreview]);
-
   const pickFile = useCallback(async (id) => {
     const entry = entriesRef.current.find((e) => e.id === id);
     if (!entry) return;
@@ -254,12 +163,10 @@ export function useEntries() {
   return {
     entries, setEntries, entriesRef, storeReady,
     expanded, toggleExpanded,
-    previews, togglePreview,
     search, setSearch,
     deleteConfirm, setDeleteConfirm,
     persist, loadEntries,
     addEntry, removeEntry, updateEntry, updateDataType,
-    addSegment, removeSegment, updateSegment,
     pickFile,
   };
 }

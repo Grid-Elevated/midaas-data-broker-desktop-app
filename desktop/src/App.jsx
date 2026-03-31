@@ -20,12 +20,10 @@ function App() {
   const {
     entries, setEntries, entriesRef, storeReady,
     expanded, toggleExpanded,
-    previews, togglePreview,
     search, setSearch,
     deleteConfirm, setDeleteConfirm,
     persist, loadEntries,
     addEntry, removeEntry, updateEntry, updateDataType,
-    addSegment, removeSegment, updateSegment,
     pickFile,
   } = useEntries();
 
@@ -148,7 +146,6 @@ function App() {
               entry={entry}
               countdowns={countdowns}
               expanded={expanded}
-              previews={previews}
               updateEntry={updateEntry}
               updateDataType={updateDataType}
               removeEntry={(id) => removeEntry(id, stopOne)}
@@ -156,10 +153,6 @@ function App() {
               startOne={startOne}
               stopOne={stopOne}
               runOne={runOne}
-              addSegment={addSegment}
-              removeSegment={removeSegment}
-              updateSegment={updateSegment}
-              togglePreview={togglePreview}
               toggleExpanded={toggleExpanded}
             />
           ))}

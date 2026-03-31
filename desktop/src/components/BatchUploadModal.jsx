@@ -1,11 +1,9 @@
 import { X, Check } from "lucide-react";
-import { REQUIRED_DATA_TYPES, ALL_DATA_TYPES, segmentFileName, uid } from "../constants";
+import { REQUIRED_DATA_TYPES, ALL_DATA_TYPES } from "../constants";
 
 export default function BatchUploadModal({
-  batchModal, setBatchModal, batchPreviews,
+  batchModal, setBatchModal,
   openBatchPicker, runBatchUpload,
-  addBatchSegment, removeBatchSegment, updateBatchSegment,
-  toggleBatchPreview,
 }) {
   if (!batchModal) return null;
 
@@ -102,7 +100,6 @@ export default function BatchUploadModal({
                     ...prev,
                     dataType: newType,
                     uploadAs: isRequired ? `${newType}.xlsx` : (deselecting ? "" : prev.uploadAs),
-                    segments: isRequired ? prev.segments.slice(0, 1) : prev.segments,
                   };
                 })}
                 disabled={batchModal.uploading}
@@ -111,89 +108,6 @@ export default function BatchUploadModal({
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Segments */}
-        <div className="batch-tag-row">
-          <div style={{ display: "flex", alignItems: "center", gap: ".75rem" }}>
-            <span className="batch-section-label">
-              Segments {batchModal.segments.length === 0 ? "— uploads whole file" : `(${batchModal.segments.length})`}
-            </span>
-            {!batchModal.uploading && !(REQUIRED_DATA_TYPES.includes(batchModal.dataType) && batchModal.segments.length >= 1) && (
-              <button className="ghost small" onClick={addBatchSegment}>+ Segment</button>
-            )}
-          </div>
-          {batchModal.segments.map((seg) => {
-            const preview = batchPreviews[seg.id];
-            const uploadedAs = batchModal.uploadAs.trim()
-              ? segmentFileName(batchModal.uploadAs.trim(), seg.name || seg.id)
-              : null;
-            return (
-              <div className="segment-block" key={seg.id}>
-                <div className="segment-row">
-                  {REQUIRED_DATA_TYPES.includes(batchModal.dataType) ? (
-                    <span className="segment-name-input" style={{ opacity: 0.6 }}>
-                      {batchModal.dataType}.xlsx
-                    </span>
-                  ) : (
-                    <input
-                      className="segment-name-input"
-                      value={seg.name}
-                      onChange={(e) => updateBatchSegment(seg.id, "name", e.target.value)}
-                      placeholder="Segment name…"
-                      disabled={batchModal.uploading}
-                    />
-                  )}
-                  <label className="segment-range">
-                    <span>Rows</span>
-                    <input type="number" min={1} value={seg.startRow}
-                      onChange={(e) => updateBatchSegment(seg.id, "startRow", Math.max(1, Number(e.target.value) || 1))}
-                      disabled={batchModal.uploading} className="segment-range-input" />
-                    <span>–</span>
-                    <input type="number" min={1} value={seg.endRow}
-                      onChange={(e) => updateBatchSegment(seg.id, "endRow", Math.max(1, Number(e.target.value) || 1))}
-                      disabled={batchModal.uploading} className="segment-range-input" />
-                  </label>
-                  <button className="ghost small" onClick={() => toggleBatchPreview(seg)}
-                    disabled={!batchModal.files.length}>
-                    {preview ? "Hide" : "Preview"}
-                  </button>
-                  {!batchModal.uploading && (
-                    <button className="ghost small danger" onClick={() => removeBatchSegment(seg.id)}><X className="icon-xs" /></button>
-                  )}
-                </div>
-                {(REQUIRED_DATA_TYPES.includes(batchModal.dataType) ? true : uploadedAs) && (
-                  <div className="datatype-hint" style={{ paddingLeft: ".25rem" }}>
-                    uploads as <code>{REQUIRED_DATA_TYPES.includes(batchModal.dataType) ? `${batchModal.dataType}.xlsx` : uploadedAs}</code>
-                    {batchModal.files.length > 1 && <> × {batchModal.files.length} files</>}
-                  </div>
-                )}
-                {preview?.error && <div className="segment-preview-error">{preview.error}</div>}
-                {preview?.rows && (
-                  <div className="segment-preview">
-                    <div className="segment-preview-info">
-                      {preview.rows.length} rows × {Math.max(...preview.rows.map((r) => r.length), 0)} cols
-                      {batchModal.files[0] && <> — from <strong>{batchModal.files[0].name}</strong></>}
-                    </div>
-                    <div className="segment-preview-table-wrap">
-                      <table className="segment-preview-table">
-                        <tbody>
-                          {preview.rows.map((row, ri) => (
-                            <tr key={ri}>
-                              <td className="segment-preview-rownum">{seg.startRow + ri}</td>
-                              {row.map((cell, ci) => (
-                                <td key={ci}>{cell != null ? String(cell) : ""}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
         </div>
 
         {/* Actions */}
@@ -208,9 +122,7 @@ export default function BatchUploadModal({
           >
             {batchModal.uploading
               ? `Uploading ${batchModal.results.length}/${batchModal.files.length}…`
-              : batchModal.segments.length > 0
-                ? `Upload ${batchModal.files.length} × ${batchModal.segments.length} segments`
-                : `Upload ${batchModal.files.length} file${batchModal.files.length !== 1 ? "s" : ""}`}
+              : `Upload ${batchModal.files.length} file${batchModal.files.length !== 1 ? "s" : ""}`}
           </button>
         </div>
 

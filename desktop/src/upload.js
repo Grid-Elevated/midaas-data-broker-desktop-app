@@ -1,5 +1,5 @@
 import { getCurrentUser } from "./auth";
-import { API_BASE, IS_TAURI, tauriFs, inferContentType, logMsg, basename, REQUIRED_DATA_TYPES, buildSegmentBlob, segmentFileName } from "./constants";
+import { API_BASE, IS_TAURI, tauriFs, inferContentType, logMsg, basename } from "./constants";
 
 export async function uploadOneBlob(blob, uploadFileName, dataType, idToken, uploadDate) {
   const ct = inferContentType(uploadFileName);
@@ -134,29 +134,6 @@ export async function uploadFile(entry) {
 
   const uploadOneBlobForEntry = (uploadBlob, uploadFileName, customDate) =>
     uploadOneBlob(uploadBlob, uploadFileName, entry.dataType, idToken, customDate || new Date().toISOString());
-
-  if (entry.segments && entry.segments.length > 0) {
-    let fileBytes;
-    if (IS_TAURI) {
-      fileBytes = rawBytes;
-    } else {
-      const file = entry._browserFile;
-      if (!file) throw new Error("No file selected (browser mode)");
-      fileBytes = new Uint8Array(await file.arrayBuffer());
-    }
-
-    const isRequiredTag = REQUIRED_DATA_TYPES.includes(entry.dataType);
-    const uploadedNames = [];
-    for (const seg of entry.segments) {
-      logMsg("info", `Slicing segment "${seg.name || seg.id}": rows ${seg.startRow}–${seg.endRow}`);
-      const segBlob = buildSegmentBlob(fileBytes, seg);
-      logMsg("info", `Segment blob size: ${segBlob.size} bytes`);
-      const segName = isRequiredTag ? `${entry.dataType}.xlsx` : segmentFileName(fileName, seg.name || seg.id);
-      await uploadOneBlobForEntry(segBlob, segName);
-      uploadedNames.push(segName);
-    }
-    return { status: "ok", msg: `Uploaded ${uploadedNames.length} segments: ${uploadedNames.join(", ")}` };
-  }
 
   await uploadOneBlobForEntry(blob, fileName);
   return { status: "ok", msg: `Uploaded → ${fileName}` };

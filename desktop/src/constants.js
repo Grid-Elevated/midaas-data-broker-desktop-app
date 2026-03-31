@@ -1,5 +1,3 @@
-import * as XLSX from "xlsx";
-
 export const API_BASE =
   "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
 export const STORE_KEY = "midaas-broker-config";
@@ -130,12 +128,6 @@ export function msUntilNextScheduledTime(times) {
   return nearest === Infinity ? null : nearest;
 }
 
-export function segmentFileName(originalName, segmentName) {
-  const base = originalName.replace(/\.[^.]+$/, "");
-  const safe = segmentName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-  return `${base}_${safe}.xlsx`;
-}
-
 export function makeEntry(overrides = {}) {
   return {
     id: uid(),
@@ -153,7 +145,6 @@ export function makeEntry(overrides = {}) {
     lastMessage: "",
     lastStatus: "idle",
     history: [],
-    segments: [],
     ...overrides,
   };
 }
@@ -169,16 +160,3 @@ export function makeRequiredEntry(dataType) {
   });
 }
 
-export function buildSegmentBlob(fileBytes, segment) {
-  const wb = XLSX.read(fileBytes, { type: "array" });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-  logMsg("info", `buildSegmentBlob: total rows=${rows.length}, startRow=${segment.startRow}, endRow=${segment.endRow}, slice(${segment.startRow - 1}, ${segment.endRow})`);
-  const sliced = rows.slice(segment.startRow - 1, segment.endRow);
-  logMsg("info", `buildSegmentBlob: sliced to ${sliced.length} rows`);
-  const newSheet = XLSX.utils.aoa_to_sheet(sliced);
-  const newWb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(newWb, newSheet, "Sheet1");
-  const out = XLSX.write(newWb, { bookType: "xlsx", type: "array" });
-  return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-}

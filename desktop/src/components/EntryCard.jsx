@@ -2,15 +2,13 @@ import {
   Lock, Hash, X, Play, Square, ArrowUp, ChevronDown, ChevronRight,
   Check, Circle, RefreshCw,
 } from "lucide-react";
-import { REQUIRED_DATA_TYPES, DATA_TYPE_META, OPTIONAL_DATA_TYPES, fmtDate, basename } from "../constants";
+import { REQUIRED_DATA_TYPES, DATA_TYPE_META, OPTIONAL_DATA_TYPES, fmtDate } from "../constants";
 import ScheduleConfig from "./ScheduleConfig";
-import SegmentEditor from "./SegmentEditor";
 
 export default function EntryCard({
-  entry, countdowns, expanded, previews,
+  entry, countdowns, expanded,
   updateEntry, updateDataType, removeEntry, pickFile,
   startOne, stopOne, runOne,
-  addSegment, removeSegment, updateSegment, togglePreview,
   toggleExpanded,
 }) {
   const isExpanded = expanded[entry.id];
@@ -177,16 +175,6 @@ export default function EntryCard({
             <button className="ghost small" onClick={() => runOne(entry.id)} disabled={!entry.path?.trim() || entry.lastStatus === "uploading"}><ArrowUp className="icon-xs" /> Now</button>
           </div>
         </div>
-
-        {/* Segments */}
-        <SegmentEditor
-          entry={entry}
-          previews={previews}
-          addSegment={addSegment}
-          removeSegment={removeSegment}
-          updateSegment={updateSegment}
-          togglePreview={togglePreview}
-        />
 
         {/* Status message */}
         {entry.lastMessage && (
