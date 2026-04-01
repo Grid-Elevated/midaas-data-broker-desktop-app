@@ -59,6 +59,16 @@ function App() {
     })();
   }, []);
 
+  /* ---- auto-restart schedulers after load ---- */
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!storeReady || !authed || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    for (const entry of entriesRef.current) {
+      if (entry.running && entry.path) startOne(entry.id);
+    }
+  }, [storeReady, authed]);
+
   /* ---- sticky header ---- */
   useEffect(() => {
     let raf;
