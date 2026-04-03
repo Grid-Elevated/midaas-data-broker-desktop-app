@@ -21,19 +21,9 @@ export function useUpdater() {
     try {
       const update = await tauriUpdater.check();
       if (update) {
-        logMsg("info", `Update available: v${update.version} — installing automatically`);
+        logMsg("info", `Update available: v${update.version} — waiting for user to install`);
         setUpdateAvailable({ version: update.version, body: update.body || "", update });
         setVersionStatus("update_available");
-        setUpdateStatus("downloading");
-        try {
-          await update.downloadAndInstall((progress) => {
-            if (progress?.event === "Started") logMsg("info", `Downloading update: ${progress.data?.contentLength || "?"} bytes`);
-          });
-          setUpdateStatus("installing");
-        } catch (e) {
-          logMsg("error", "Auto-update install failed:", e?.message || e);
-          setUpdateStatus("error");
-        }
       } else {
         logMsg("info", "App is up to date");
         setVersionStatus("up_to_date");
