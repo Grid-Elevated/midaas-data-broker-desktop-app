@@ -90,7 +90,7 @@ async function uploadViaPresign(blob, uploadAs, dataType, idToken) {
     throw new Error(`Presign failed [${presignRes.status}]: ${text.slice(0, 200)}`);
   }
 
-  const { uploadUrl, requiredHeaders, key } = await presignRes.json();
+  const { uploadUrl, requiredHeaders, key, uploadId } = await presignRes.json();
 
   const s3Res = await fetch(uploadUrl, {
     method: "PUT",
@@ -103,7 +103,7 @@ async function uploadViaPresign(blob, uploadAs, dataType, idToken) {
     throw new Error(`S3 PUT failed [${s3Res.status}]: ${text.slice(0, 200)}`);
   }
 
-  return key;
+  return { key, uploadId };
 }
 
 /* ------------------------------------------------------------------ */
@@ -170,6 +170,7 @@ describe("Daily Upload: Presign API contract", () => {
 
 describe("Daily Upload: End-to-end with sample files", () => {
   let idToken = null;
+  const uploadedVersions = []; // { uploadAs, uploadId }
 
   beforeAll(async () => {
     if (!HAS_CREDS) return;
@@ -177,10 +178,10 @@ describe("Daily Upload: End-to-end with sample files", () => {
   });
 
   afterAll(async () => {
-    if (!idToken) return;
+    if (!idToken || uploadedVersions.length === 0) return;
     await Promise.all(
-      DAILY_UPLOADS.map(({ uploadAs }) =>
-        fetch(`${API_BASE}/facilities/${FACILITY_ID}/files/${uploadAs}`, {
+      uploadedVersions.map(({ uploadAs, uploadId }) =>
+        fetch(`${API_BASE}/facilities/${FACILITY_ID}/files/${uploadAs}/versions/${uploadId}`, {
           method: "DELETE",
           headers: { Authorization: `Bearer ${idToken}` },
         }).catch(() => {})
@@ -195,12 +196,14 @@ describe("Daily Upload: End-to-end with sample files", () => {
 
       expect(blob.size).toBeGreaterThan(0);
 
-      const key = await uploadViaPresign(blob, uploadAs, dataType, idToken);
+      const { key, uploadId } = await uploadViaPresign(blob, uploadAs, dataType, idToken);
 
       expect(typeof key).toBe("string");
       expect(key.length).toBeGreaterThan(0);
       expect(key).toContain(FACILITY_ID);
       expect(key).toContain(uploadAs);
+
+      uploadedVersions.push({ uploadAs, uploadId });
     }, 30000);
   }
 });
