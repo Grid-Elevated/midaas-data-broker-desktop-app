@@ -11,7 +11,7 @@
  * Run with:  npx vitest run src/test/daily-upload.test.js
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -175,6 +175,18 @@ describe("Daily Upload: End-to-end with sample files", () => {
     if (!HAS_CREDS) return;
     idToken = await getCognitoToken(TEST_USERNAME, TEST_PASSWORD);
   });
+
+  afterAll(async () => {
+    if (!idToken) return;
+    await Promise.all(
+      DAILY_UPLOADS.map(({ uploadAs }) =>
+        fetch(`${API_BASE}/facilities/${FACILITY_ID}/files/${uploadAs}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${idToken}` },
+        }).catch(() => {})
+      )
+    );
+  }, 30000);
 
   for (const { dataType, uploadAs, sampleFile } of DAILY_UPLOADS) {
     it.skipIf(!HAS_CREDS)(`${dataType}: reads ${sampleFile} and uploads to S3`, async () => {
