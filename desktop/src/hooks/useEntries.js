@@ -16,8 +16,8 @@ export function useEntries() {
   const browserFilesRef = useRef({});
 
   const persist = useCallback(async (list) => {
-    const toSave = list.map(({ id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history }) => ({
-      id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history: (history || []).slice(0, MAX_HISTORY),
+    const toSave = list.map(({ id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history, running }) => ({
+      id, label, path, sourceType, uploadAs, dataType, startAt, intervalMin, scheduleType, scheduleTimes, lastUpload, lastMessage, lastStatus, history: (history || []).slice(0, MAX_HISTORY), running: !!running,
     }));
     await storage.set("entries", toSave);
   }, []);
@@ -32,7 +32,7 @@ export function useEntries() {
         return {
           ...makeEntry(),
           ...e,
-          running: false,
+          running: !!e.running,
           lastStatus: e.lastStatus || "idle",
           history: e.history || [],
           sourceType: e.sourceType || "file",
