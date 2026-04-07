@@ -55,15 +55,35 @@ export function useUpdater() {
 
   const installUpdate = useCallback(async () => {
     if (!updateAvailable?.update) return;
-    setUpdateStatus("downloading");
+    setUpdateStatus("downloading:0");
     try {
+      let total = 0;
+      let received = 0;
       await updateAvailable.update.downloadAndInstall((progress) => {
-        if (progress?.event === "Started") logMsg("info", `Downloading update: ${progress.data?.contentLength || "?"} bytes`);
+        if (progress?.event === "Started") {
+          total = progress.data?.contentLength || 0;
+          logMsg("info", `Downloading update: ${total || "?"} bytes`);
+        } else if (progress?.event === "Progress") {
+          received += progress.data?.chunkLength || 0;
+          const pct = total > 0 ? Math.round((received / total) * 100) : null;
+          setUpdateStatus(`downloading:${pct ?? ""}`);
+        } else if (progress?.event === "Finished") {
+          setUpdateStatus("installing");
+        }
       });
       setUpdateStatus("installing");
+      // Relaunch after install (Tauri may auto-relaunch, but call explicitly as fallback)
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
     } catch (e) {
-      logMsg("error", "Update install failed:", e?.message || e);
-      setUpdateStatus("error");
+      const msg = e?.message || String(e);
+      logMsg("error", "Update install failed:", msg);
+      // In dev mode the binary can't be replaced — this is expected
+      if (msg.includes("dev mode") || msg.includes("not supported") || msg.includes("permission")) {
+        setUpdateStatus("dev");
+      } else {
+        setUpdateStatus("error");
+      }
     }
   }, [updateAvailable]);
 

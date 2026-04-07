@@ -1,4 +1,5 @@
 export const API_BASE =
+  import.meta.env.VITE_DATASET_API_URL ||
   "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
 export const STORE_KEY = "midaas-broker-config";
 export const MAX_HISTORY = 10;

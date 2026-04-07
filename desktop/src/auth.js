@@ -91,7 +91,7 @@ export async function login(username, password) {
     expiresAt: Date.now() + result.ExpiresIn * 1000,
   };
 
-  await _storage.set("auth_tokens", _tokens);
+  if (_storage) await _storage.set("auth_tokens", _tokens);
 
   const payload = decodeJwtPayload(result.IdToken);
   const groups = payload?.["cognito:groups"] || [];
@@ -125,7 +125,7 @@ export async function refreshSession() {
     expiresAt: Date.now() + result.ExpiresIn * 1000,
   };
 
-  await _storage.set("auth_tokens", _tokens);
+  if (_storage) await _storage.set("auth_tokens", _tokens);
 }
 
 /**
@@ -169,8 +169,11 @@ export function getCurrentUser() {
   const payload = decodeJwtPayload(_tokens.idToken);
   if (!payload) return null;
   const groups = payload["cognito:groups"] || [];
-  const rawFacilityId = groups[0] || "";
-  const facilityId = rawFacilityId.replace(/_admin$/, "");
+  const ROLE_GROUPS = new Set(["global_admin", "admin", "heber_demo"]);
+  const facilityId =
+    groups.find((g) => !ROLE_GROUPS.has(g) && !g.endsWith("_admin")) ||
+    (groups.includes("global_admin") ? "global_admin" : "") ||
+    (groups[0]?.replace(/_admin$/, "") ?? "");
   return {
     username: payload["cognito:username"] || payload.sub || "",
     email: payload.email || "",
@@ -195,7 +198,7 @@ export function startBackgroundRefresh() {
     } catch (err) {
       console.warn("[auth] Background refresh failed:", err.message);
       // If refresh token itself is dead, try stored credentials
-      await _tryReloginFromStoredCredentials();
+      await tryReloginFromStoredCredentials();
     }
   };
 
@@ -236,7 +239,7 @@ async function _silentRefresh() {
     }
   } catch (err) {
     console.warn("[auth] Focus refresh failed:", err.message);
-    await _tryReloginFromStoredCredentials();
+    await tryReloginFromStoredCredentials();
   }
 }
 
@@ -251,7 +254,7 @@ export async function clearCredentials() {
 }
 
 /** Attempt silent re-login using stored credentials */
-async function _tryReloginFromStoredCredentials() {
+export async function tryReloginFromStoredCredentials() {
   if (!_storage) return false;
   const creds = await _storage.get("auth_creds");
   if (!creds?.username || !creds?.password) {

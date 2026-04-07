@@ -19,7 +19,7 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FILES_DIR = resolve(__dirname, "../../../file-server/files");
 
-const API_BASE = "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
+const API_BASE = process.env.DATASET_API_URL || "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
 const COGNITO_URL = "https://cognito-idp.us-east-1.amazonaws.com/";
 const CLIENT_ID = "38er2dea2evgqfjrn4k3q4ehht";
 const FACILITY_ID = "global_admin";

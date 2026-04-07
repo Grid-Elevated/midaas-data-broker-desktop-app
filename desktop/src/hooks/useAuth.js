@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { initAuth, login, logout, getValidIdToken, getCurrentUser, startBackgroundRefresh, stopBackgroundRefresh, storeCredentials, clearCredentials } from "../auth";
+import { initAuth, login, logout, getValidIdToken, getCurrentUser, startBackgroundRefresh, stopBackgroundRefresh, storeCredentials, clearCredentials, tryReloginFromStoredCredentials } from "../auth";
 import { storage } from "../constants";
 
 export function useAuth() {
@@ -11,15 +11,23 @@ export function useAuth() {
 
   const initializeAuth = useCallback(async () => {
     const hadSession = await initAuth(storage);
+    let authedOk = false;
     if (hadSession) {
       try {
         await getValidIdToken();
-        setAuthed(true);
-        setAuthUser(getCurrentUser());
-        startBackgroundRefresh();
+        authedOk = true;
       } catch {
-        setAuthed(false);
+        // refresh token expired — try stored credentials
+        authedOk = await tryReloginFromStoredCredentials();
       }
+    } else {
+      // no session at all — try stored credentials (e.g. first launch after update)
+      authedOk = await tryReloginFromStoredCredentials();
+    }
+    if (authedOk) {
+      setAuthed(true);
+      setAuthUser(getCurrentUser());
+      startBackgroundRefresh();
     }
     setAuthLoading(false);
   }, []);
@@ -29,6 +37,7 @@ export function useAuth() {
     setAuthError("");
     setAuthLoading(true);
     try {
+      await initAuth(storage); // ensure _storage is set (guards against HMR resets)
       const user = await login(loginForm.username, loginForm.password);
       await storeCredentials(loginForm.username, loginForm.password);
       startBackgroundRefresh();
