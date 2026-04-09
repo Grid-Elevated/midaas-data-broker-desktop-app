@@ -35,7 +35,7 @@ function App() {
     initializeAuth, handleLogin, handleLogout,
   } = useAuth();
 
-  const { updateAvailable, setUpdateAvailable, updateStatus, versionStatus, appVersion, installUpdate, checkForUpdates } = useUpdater();
+  const { updateAvailable, setUpdateAvailable, updateStatus, installUpdate } = useUpdater();
 
   // const {
   //   batchModal, setBatchModal, batchPreviews,
@@ -55,7 +55,6 @@ function App() {
       await storage.init();
       await initializeAuth();
       await loadEntries();
-      await checkForUpdates();
     })();
   }, []);
 
@@ -115,14 +114,7 @@ function App() {
             <img src="/Grid_logo_mark.png" alt="Grid logo" className="logo-img" />
             <span className="logo-text">MIDAAS</span>
           </div>
-          <h1 style={{ display: "flex", alignItems: "baseline", gap: ".6rem" }}>
-            Automated File Upload
-            <span style={{ fontSize: ".55em", fontWeight: 400, color: "#c0c6cc" }}>
-              {versionStatus === "checking" && "searching for newer version…"}
-              {versionStatus === "up_to_date" && `v${appVersion}`}
-              {versionStatus === "update_available" && "newer version available"}
-            </span>
-          </h1>
+          <h1>Automated File Upload</h1>
           <p className="subhead">
             Add files, set individual upload schedules, and let the broker run.
             Close the window — it keeps uploading from the system tray.

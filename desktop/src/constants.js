@@ -28,12 +28,11 @@ export const ALL_DATA_TYPES = Object.entries(DATA_TYPE_META).map(([value, meta])
 export const IS_TAURI = !!(window.__TAURI_INTERNALS__);
 
 /* ---- Lazy-load Tauri plugins (only when inside Tauri) ---- */
-export let tauriDialog, tauriFs, tauriStore, tauriUpdater;
+export let tauriDialog, tauriFs, tauriStore;
 if (IS_TAURI) {
   tauriDialog = await import("@tauri-apps/plugin-dialog");
   tauriFs = await import("@tauri-apps/plugin-fs");
   tauriStore = await import("@tauri-apps/plugin-store");
-  tauriUpdater = await import("@tauri-apps/plugin-updater");
 }
 
 /* ---- Storage abstraction (Tauri store vs localStorage) ---- */
