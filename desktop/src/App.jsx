@@ -98,8 +98,23 @@ function App() {
     );
   }
 
+  const isBeta = import.meta.env.VITE_APP_VARIANT === "beta";
+
   return (
     <div className="app">
+      {isBeta && (
+        <div style={{
+          background: "#f59e0b",
+          color: "#000",
+          textAlign: "center",
+          padding: "4px 0",
+          fontSize: "12px",
+          fontWeight: 700,
+          letterSpacing: "0.1em",
+        }}>
+          BETA — Internal testing only
+        </div>
+      )}
       <UpdateBanner
         updateAvailable={updateAvailable}
         updateStatus={updateStatus}

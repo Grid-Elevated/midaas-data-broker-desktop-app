@@ -81,6 +81,7 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_APP_VARIANT: beta
         with:
           projectPath: desktop
           tagName: dev-v${{ needs.bump-version.outputs.new_version }}
