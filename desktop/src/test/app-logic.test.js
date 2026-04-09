@@ -18,7 +18,7 @@ import {
 /*  CONSTANTS USED IN APP.JSX — replicated here for testing           */
 /* ================================================================== */
 
-const API_BASE = "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
+const API_BASE = process.env.DATASET_API_URL || "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
 const STORE_KEY = "midaas-broker-config";
 const MAX_HISTORY = 10;
 

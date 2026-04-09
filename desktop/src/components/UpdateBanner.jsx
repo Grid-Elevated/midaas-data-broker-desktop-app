@@ -13,9 +13,14 @@ export default function UpdateBanner({ updateAvailable, updateStatus, installUpd
       {updateStatus === "" && (
         <button className="update-btn" onClick={installUpdate}>Update &amp; restart</button>
       )}
-      {updateStatus === "downloading" && <span className="update-progress">Downloading…</span>}
+      {updateStatus.startsWith("downloading") && (
+        <span className="update-progress">
+          {(() => { const pct = updateStatus.split(":")[1]; return pct ? `Downloading… ${pct}%` : "Downloading…"; })()}
+        </span>
+      )}
       {updateStatus === "installing" && <span className="update-progress">Installing — restarting…</span>}
       {updateStatus === "error" && <span className="update-progress update-error">Update failed. Try again later.</span>}
+      {updateStatus === "dev" && <span className="update-progress update-error">Updates require the installed app, not dev mode.</span>}
       <button className="update-dismiss" onClick={onDismiss}><X className="icon-xs" /></button>
     </div>
   );
