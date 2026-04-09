@@ -4,12 +4,12 @@ A Tauri + React desktop app that automatically uploads Heber data files to the M
 
 ## Features
 
-- **Browse & lock** file paths for: yesterlog, yestermet, tomorlog, optional SCADA
-- **Scheduled uploads** on a configurable interval (default 10 min)
-- **Presigned-URL upload** — files go directly to S3 via the MIDAAS API
-- **Persistent config** — paths and interval survive app restarts
-- **System tray** — closing the window hides to tray; the timer keeps running
-- **Live activity log** with per-file status and countdown to next upload
+- **Multiple upload entries** — configure any number of file watchers, each with its own file path, data type (`yesterlog`, `tomorrowlog`, `hydrodata`, `yestermet`), and schedule
+- **Flexible scheduling** — interval-based (default 10 min) or specific daily times per entry
+- **Presigned-URL upload** — files go directly to S3 via the MIDAAS datasets API
+- **Persistent config** — all entries and settings survive app restarts
+- **System tray** — closing the window hides to tray; scheduled uploads keep running
+- **Live activity log** with per-entry status, last upload time, and upload history
 
 ## Requirements
 
@@ -36,14 +36,14 @@ Produces an `.msi` installer + standalone `.exe` in `desktop/src-tauri/target/re
 ## Usage
 
 1. Open the app.
-2. Click **Browse** next to each file to set its path on disk.
-3. Set the upload interval (minutes).
-4. Click **▶ Start** — the first upload runs immediately, then repeats.
+2. Click **+ Add** to create an upload entry.
+3. Set the file path, data type (`yesterlog`, `tomorrowlog`, `hydrodata`, `yestermet`), and schedule.
+4. Start the entry — the first upload runs immediately, then repeats on schedule.
 5. Close the window — the app minimises to the system tray and keeps uploading.
 6. Right-click the tray icon → **Show** to reopen, or **Quit** to stop.
 
 ## Project Layout
 
-- `desktop/src/` — React UI (App.jsx)
-- `desktop/src-tauri/` — Tauri / Rust backend (system tray, file access, store)
+- `desktop/src/` — React UI (components, hooks, constants)
+- `desktop/src-tauri/` — Tauri / Rust backend (system tray, file access, persistent store)
 - `origonal-script/` — Original Python script for reference
