@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import * as XLSX from "xlsx";
 
-const API_BASE = "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
+const API_BASE = process.env.DATASET_API_URL || "https://assun8t2oi.execute-api.us-east-1.amazonaws.com/dev";
 const FACILITY_ID = "data-dev-test";
 
 /* ------------------------------------------------------------------ */

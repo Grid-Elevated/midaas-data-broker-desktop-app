@@ -1,9 +1,9 @@
-name: Build and Release
+name: Build and Release Dev
 
 on:
   push:
     branches:
-      - main
+      - dev
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -20,16 +20,15 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump patch version
+      - name: Bump patch version in dev config
         id: bump
         run: |
-          CURRENT=$(jq -r '.version' desktop/src-tauri/tauri.conf.json)
+          CURRENT=$(jq -r '.version' desktop/src-tauri/tauri.conf.dev.json)
           IFS='.' read -r major minor patch <<< "$CURRENT"
           NEW="$major.$minor.$((patch + 1))"
           echo "new_version=$NEW" >> $GITHUB_OUTPUT
 
-          jq ".version = \"$NEW\"" desktop/src-tauri/tauri.conf.json > tmp.json && mv tmp.json desktop/src-tauri/tauri.conf.json
-          jq ".version = \"$NEW\"" desktop/package.json > tmp.json && mv tmp.json desktop/package.json
+          jq ".version = \"$NEW\"" desktop/src-tauri/tauri.conf.dev.json > tmp.json && mv tmp.json desktop/src-tauri/tauri.conf.dev.json
 
           echo "Bumped $CURRENT → $NEW"
 
@@ -37,8 +36,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add desktop/src-tauri/tauri.conf.json desktop/package.json
-          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
+          git add desktop/src-tauri/tauri.conf.dev.json
+          git commit -m "chore: bump dev version to ${{ steps.bump.outputs.new_version }} [skip ci]"
           git push
 
   build:
@@ -60,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: dev
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -85,14 +84,15 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_APP_VARIANT: beta
         with:
           projectPath: desktop
-          tagName: v${{ needs.bump-version.outputs.new_version }}
-          releaseName: v${{ needs.bump-version.outputs.new_version }}
-          releaseBody: ""
+          tagName: dev-v${{ needs.bump-version.outputs.new_version }}
+          releaseName: Dev v${{ needs.bump-version.outputs.new_version }}
+          releaseBody: "Development build — not for production use."
           releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+          prerelease: true
+          args: ${{ matrix.args }} --config src-tauri/tauri.conf.dev.json
 
   notify:
     needs: [bump-version, build]
@@ -105,26 +105,26 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Send release email via SES
+      - name: Send beta release email via SES
         run: |
-          VERSION="v${{ needs.bump-version.outputs.new_version }}"
+          VERSION="dev-v${{ needs.bump-version.outputs.new_version }}"
           RELEASE_URL="https://github.com/Grid-Elevated/midaas-data-broker-desktop-app/releases/tag/${VERSION}"
-          DOWNLOAD_URL="https://midaas.ai/dataset-manager"
+          DOWNLOAD_URL="https://dev.midaas.ai/dataset-manager"
 
           aws ses send-email \
             --region us-east-1 \
             --from "noreply@midaas.ai" \
-            --destination "ToAddresses=cmalani@heberpower.com,russel.brouillard@gridelevated.com" \
+            --destination "ToAddresses=russel.brouillard@gridelevated.com" \
             --message "{
-              \"Subject\": {\"Data\": \"MIDAAS Data Broker ${VERSION} Released\", \"Charset\": \"UTF-8\"},
+              \"Subject\": {\"Data\": \"MIDAAS Data Broker Beta ${VERSION} Ready for Testing\", \"Charset\": \"UTF-8\"},
               \"Body\": {
                 \"Html\": {
                   \"Charset\": \"UTF-8\",
-                  \"Data\": \"<p>A new version of the MIDAAS Data Broker desktop app has been released.</p><p><strong>Version:</strong> ${VERSION}</p><p>Download the latest installer from the Dataset Manager page:</p><p><a href='${DOWNLOAD_URL}'>${DOWNLOAD_URL}</a></p><p>Release details: <a href='${RELEASE_URL}'>${RELEASE_URL}</a></p><br><p>MIDAAS Team</p>\"
+                  \"Data\": \"<p>A new beta build of the MIDAAS Data Broker is ready for internal testing.</p><p><strong>Version:</strong> ${VERSION}</p><p>Download the beta installer from the dev Dataset Manager page:</p><p><a href='${DOWNLOAD_URL}'>${DOWNLOAD_URL}</a></p><p>Release details: <a href='${RELEASE_URL}'>${RELEASE_URL}</a></p><p><em>This is a beta build — please report any issues before it is promoted to production.</em></p><br><p>MIDAAS Team</p>\"
                 },
                 \"Text\": {
                   \"Charset\": \"UTF-8\",
-                  \"Data\": \"MIDAAS Data Broker ${VERSION} has been released.\n\nDownload: ${DOWNLOAD_URL}\nRelease: ${RELEASE_URL}\"
+                  \"Data\": \"MIDAAS Data Broker Beta ${VERSION} is ready for internal testing.\n\nDownload (dev): ${DOWNLOAD_URL}\nRelease: ${RELEASE_URL}\n\nThis is a beta build — please report any issues before it is promoted to production.\"
                 }
               }
             }"
