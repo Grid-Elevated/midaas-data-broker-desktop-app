@@ -54,13 +54,47 @@ export const storage = {
   },
 };
 
+/* ---- Disk log (Tauri only) ---- */
+
+const MAX_LOG_LINES = 2000;
+let _logPath = null;
+
+async function _getLogPath() {
+  if (_logPath) return _logPath;
+  if (!IS_TAURI) return null;
+  try {
+    const { appDataDir } = await import("@tauri-apps/api/path");
+    _logPath = (await appDataDir()) + "broker.log";
+  } catch { /* ignore — disk logging is best-effort */ }
+  return _logPath;
+}
+
+async function _writeDiskLog(line) {
+  try {
+    const path = await _getLogPath();
+    if (!path || !tauriFs) return;
+    let existing = "";
+    try {
+      const bytes = await tauriFs.readFile(path);
+      existing = new TextDecoder().decode(bytes);
+    } catch { /* file doesn't exist yet */ }
+    const lines = existing ? existing.split("\n") : [];
+    lines.push(line);
+    // Keep only the most recent MAX_LOG_LINES lines
+    const trimmed = lines.slice(-MAX_LOG_LINES).join("\n");
+    await tauriFs.writeFile(path, new TextEncoder().encode(trimmed));
+  } catch { /* disk logging is best-effort — never throw */ }
+}
+
 /* ---- Helpers ---- */
 
 export function logMsg(level, ...args) {
   const ts = new Date().toISOString();
   const msg = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+  const line = `[${ts}] ${level.toUpperCase()}: ${msg}`;
   if (level === "error") console.error(`[${ts}] ERROR:`, ...args);
-  else console.log(`[${ts}] ${level.toUpperCase()}:`, ...args);
+  else console.log(line);
+  _writeDiskLog(line); // fire-and-forget
   return msg;
 }
 

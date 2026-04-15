@@ -16,6 +16,25 @@ import EntryCard from "./components/EntryCard";
 // import BatchUploadModal from "./components/BatchUploadModal";
 import DeleteConfirmModal from "./components/DeleteConfirmModal";
 
+/**
+ * Returns true if a scheduled entry has a time that already passed today
+ * but has not yet been successfully uploaded today.
+ */
+function wasMissedToday(entry) {
+  if (entry.scheduleType !== "scheduled" || !entry.scheduleTimes?.length) return false;
+  const now = Date.now();
+  for (const t of entry.scheduleTimes) {
+    const [hh, mm] = t.split(":").map(Number);
+    const scheduledMs = new Date();
+    scheduledMs.setHours(hh, mm, 0, 0);
+    const scheduledToday = scheduledMs.getTime();
+    if (scheduledToday > now) continue; // hasn't happened yet today
+    // Scheduled time has passed — check if we have a successful upload after it
+    if (!entry.lastUpload || entry.lastUpload < scheduledToday) return true;
+  }
+  return false;
+}
+
 function App() {
   const {
     entries, setEntries, entriesRef, storeReady,
@@ -64,7 +83,13 @@ function App() {
     if (!storeReady || !authed || autoStartedRef.current) return;
     autoStartedRef.current = true;
     for (const entry of entriesRef.current) {
-      if (entry.running && entry.path) startOne(entry.id);
+      if (!entry.running || !entry.path) continue;
+      // Re-arm the schedule timer first
+      startOne(entry.id);
+      // Catch-up: if the scheduled time passed today without a successful upload, run now
+      if (wasMissedToday(entry)) {
+        runOne(entry.id);
+      }
     }
   }, [storeReady, authed]);
 
