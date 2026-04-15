@@ -1,7 +1,7 @@
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
-use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 /// Returns true when the app was launched by the OS autostart mechanism
 /// (we pass --autostart as a flag when registering the startup entry).
