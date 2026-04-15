@@ -4,10 +4,15 @@ import { uploadFile } from "../upload";
 
 const DEDUP_WINDOW_MS = 45_000; // skip if same entry ran < 45s ago
 
+// Retry delays after a failed upload: 5 min, 15 min, 45 min
+const RETRY_DELAYS_MS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
+
 export function useScheduler(entriesRef, setEntries, persist) {
   const [countdowns, setCountdowns] = useState({});
   const timersRef = useRef({});
   const lastRunRef = useRef({}); // id → timestamp of last runOne call
+  const retryCountRef = useRef({}); // id → number of retries attempted
+  const retryTimersRef = useRef({}); // id → retry setTimeout handle
 
   /* ---- countdown ticker ---- */
   useEffect(() => {
@@ -47,6 +52,12 @@ export function useScheduler(entriesRef, setEntries, persist) {
       const ts = Date.now();
       try {
         const result = await uploadFile(entry);
+        // Success — clear any pending retries
+        if (retryTimersRef.current[id]) {
+          clearTimeout(retryTimersRef.current[id]);
+          delete retryTimersRef.current[id];
+        }
+        retryCountRef.current[id] = 0;
         const histEntry = { ts, status: "ok", msg: result.msg };
         setEntries((prev) => {
           const next = prev.map((e) =>
@@ -66,6 +77,23 @@ export function useScheduler(entriesRef, setEntries, persist) {
       } catch (err) {
         const errorMsg = err?.message || String(err);
         logMsg("error", `Upload failed:`, errorMsg);
+
+        // Schedule a retry with exponential backoff
+        const attempt = retryCountRef.current[id] || 0;
+        if (attempt < RETRY_DELAYS_MS.length) {
+          const delayMs = RETRY_DELAYS_MS[attempt];
+          const delayMin = Math.round(delayMs / 60_000);
+          retryCountRef.current[id] = attempt + 1;
+          logMsg("info", `Retry ${attempt + 1}/${RETRY_DELAYS_MS.length} scheduled in ${delayMin}m for "${entry.label || id}"`);
+          retryTimersRef.current[id] = setTimeout(() => {
+            delete retryTimersRef.current[id];
+            runOne(id);
+          }, delayMs);
+        } else {
+          retryCountRef.current[id] = 0;
+          logMsg("error", `All retries exhausted for "${entry.label || id}" — will retry at next scheduled time`);
+        }
+
         const histEntry = { ts, status: "error", msg: errorMsg };
         setEntries((prev) => {
           const next = prev.map((e) =>
@@ -155,6 +183,11 @@ export function useScheduler(entriesRef, setEntries, persist) {
       if (timersRef.current[id]?.intervalHandle) clearInterval(timersRef.current[id].intervalHandle);
       if (timersRef.current[id]?.timeoutHandle) clearTimeout(timersRef.current[id].timeoutHandle);
       delete timersRef.current[id];
+      if (retryTimersRef.current[id]) {
+        clearTimeout(retryTimersRef.current[id]);
+        delete retryTimersRef.current[id];
+      }
+      retryCountRef.current[id] = 0;
       setEntries((prev) => { const next = prev.map((e) => (e.id === id ? { ...e, running: false } : e)); persist(next); return next; });
     },
     [setEntries, persist],
