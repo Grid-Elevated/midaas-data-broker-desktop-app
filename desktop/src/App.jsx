@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import "./App.css";
 
 import { storage, basename } from "./constants";
+import { postStartup, postHeartbeat } from "./health";
 import { useEntries } from "./hooks/useEntries";
 import { useScheduler } from "./hooks/useScheduler";
 import { useAuth } from "./hooks/useAuth";
@@ -77,20 +78,26 @@ function App() {
     })();
   }, []);
 
-  /* ---- auto-restart schedulers after load ---- */
+  /* ---- auto-restart schedulers + health reporting after load ---- */
   const autoStartedRef = useRef(false);
   useEffect(() => {
     if (!storeReady || !authed || autoStartedRef.current) return;
     autoStartedRef.current = true;
-    for (const entry of entriesRef.current) {
+
+    const entries = entriesRef.current;
+    for (const entry of entries) {
       if (!entry.running || !entry.path) continue;
-      // Re-arm the schedule timer first
       startOne(entry.id);
-      // Catch-up: if the scheduled time passed today without a successful upload, run now
-      if (wasMissedToday(entry)) {
-        runOne(entry.id);
-      }
+      if (wasMissedToday(entry)) runOne(entry.id);
     }
+
+    // Report startup to AWS and start 30-min heartbeat
+    postStartup(entries);
+    const heartbeatHandle = setInterval(
+      () => postHeartbeat(entriesRef.current),
+      30 * 60 * 1000,
+    );
+    return () => clearInterval(heartbeatHandle);
   }, [storeReady, authed]);
 
   /* ---- sticky header ---- */
