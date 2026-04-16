@@ -19,7 +19,9 @@ async function _post(payload) {
         }
       : (url, opts) => fetch(url, opts);
 
-    await doFetch(`${API_BASE}/datasets/health`, {
+    const url = `${API_BASE}/datasets/health`;
+    console.log("[health] POST", url, payload);
+    const res = await doFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -27,8 +29,9 @@ async function _post(payload) {
       },
       body: JSON.stringify(payload),
     });
-  } catch {
-    // Best-effort — never throw
+    console.log("[health] response status", res.status);
+  } catch (err) {
+    console.error("[health] POST failed", err);
   }
 }
 
@@ -56,7 +59,7 @@ export function postStartup(entries) {
   _post({ ..._base(), event: "startup", entries: _entrySummary(entries) });
 }
 
-/** Call every 30 minutes while the app is running */
+/** Call every 1 minute while the app is running */
 export function postHeartbeat(entries) {
   _post({ ..._base(), event: "heartbeat", entries: _entrySummary(entries) });
 }

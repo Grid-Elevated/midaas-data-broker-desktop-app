@@ -91,11 +91,11 @@ function App() {
       if (wasMissedToday(entry)) runOne(entry.id);
     }
 
-    // Report startup to AWS and start 30-min heartbeat
+    // Report startup to AWS and start 1-min heartbeat
     postStartup(entries);
     const heartbeatHandle = setInterval(
       () => postHeartbeat(entriesRef.current),
-      30 * 60 * 1000,
+      60 * 1000,
     );
     return () => clearInterval(heartbeatHandle);
   }, [storeReady, authed]);
