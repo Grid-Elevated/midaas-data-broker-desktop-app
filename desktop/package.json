@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:build-dev": "tauri build --config src-tauri/tauri.conf.dev.json",
+    "tauri:build-dev": "tauri build --config src-tauri/tauri.conf.dev.json -- --mode development",
     "test": "vitest",
     "test:run": "vitest run"
   },

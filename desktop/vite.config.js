@@ -1,11 +1,28 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 
 const host = process.env.TAURI_DEV_HOST;
+
+// Read the app version from the active Tauri config (dev or prod)
+function getAppVersion() {
+  const confPath = process.env.VITE_APP_VARIANT === "beta"
+    ? resolve(__dirname, "src-tauri/tauri.conf.dev.json")
+    : resolve(__dirname, "src-tauri/tauri.conf.json");
+  try {
+    return JSON.parse(readFileSync(confPath, "utf-8")).version || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(getAppVersion()),
+  },
   test: {
     environment: "jsdom",
     globals: true,

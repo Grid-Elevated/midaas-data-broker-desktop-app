@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { fmtCountdown, msUntilNextScheduledTime, logMsg, basename, MAX_HISTORY } from "../constants";
 import { uploadFile } from "../upload";
+import { postUploadSuccess, postUploadFailure } from "../health";
 
 const DEDUP_WINDOW_MS = 45_000; // skip if same entry ran < 45s ago
 
@@ -58,6 +59,7 @@ export function useScheduler(entriesRef, setEntries, persist) {
           delete retryTimersRef.current[id];
         }
         retryCountRef.current[id] = 0;
+        postUploadSuccess(entry);
         const histEntry = { ts, status: "ok", msg: result.msg };
         setEntries((prev) => {
           const next = prev.map((e) =>
@@ -92,6 +94,7 @@ export function useScheduler(entriesRef, setEntries, persist) {
         } else {
           retryCountRef.current[id] = 0;
           logMsg("error", `All retries exhausted for "${entry.label || id}" — will retry at next scheduled time`);
+          postUploadFailure(entry, errorMsg);
         }
 
         const histEntry = { ts, status: "error", msg: errorMsg };
