@@ -96,9 +96,9 @@ describe("Required Data Types Enforcement", () => {
     expect(REQUIRED_DATA_TYPES).toHaveLength(4);
   });
 
-  it("contains yesterdaylog, tomorrowlog, hydrodata, yestermet", () => {
+  it("contains yesterlog, tomorrowlog, hydrodata, yestermet", () => {
     expect(REQUIRED_DATA_TYPES).toEqual(
-      expect.arrayContaining(["yesterdaylog", "tomorrowlog", "hydrodata", "yestermet"])
+      expect.arrayContaining(["yesterlog", "tomorrowlog", "hydrodata", "yestermet"])
     );
   });
 
@@ -136,7 +136,7 @@ describe("Required Data Types Enforcement", () => {
   });
 
   it("required entries get correct labels from DATA_TYPE_META", () => {
-    expect(makeRequiredEntry("yesterdaylog").label).toBe("Yesterday Log");
+    expect(makeRequiredEntry("yesterlog").label).toBe("Yesterday Log");
     expect(makeRequiredEntry("tomorrowlog").label).toBe("Tomorrow Log");
     expect(makeRequiredEntry("hydrodata").label).toBe("Hydro Data");
     expect(makeRequiredEntry("yestermet").label).toBe("Yesterday Met");
@@ -698,15 +698,15 @@ describe("Auto Uploader Logic", () => {
       expect(body.fileName).toBe("hydrodata.xlsx");
     });
 
-    it("includes dataType for yesterdaylog", async () => {
+    it("includes dataType for yesterlog", async () => {
       globalThis.fetch
         .mockReturnValueOnce(presignOk())
         .mockReturnValueOnce(s3Ok());
 
-      await uploadOneBlob(new Blob(["x"]), "yesterdaylog.xlsx", "yesterdaylog", "tok", null, "fac");
+      await uploadOneBlob(new Blob(["x"]), "yesterlog.xlsx", "yesterlog", "tok", null, "fac");
 
       const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
-      expect(body.dataType).toBe("yesterdaylog");
+      expect(body.dataType).toBe("yesterlog");
     });
 
     it("omits dataType for auxdata when not specified", async () => {

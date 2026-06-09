@@ -1,6 +1,8 @@
 /**
  * Pure helper functions extracted from App.jsx for testability.
- * App.jsx imports these — they are the single source of truth.
+ * NOTE: the running app imports its data-type constants from ./constants.js — keep the
+ * REQUIRED_DATA_TYPES / DATA_TYPE_META below in sync with that file (canonical: yesterlog,
+ * tomorrowlog, hydrodata, yestermet, +auxdata). These copies exist only for unit tests.
  */
 
 let _id = 0;
@@ -104,10 +106,10 @@ export function makeEntry(overrides = {}) {
   };
 }
 
-export const REQUIRED_DATA_TYPES = ["yesterdaylog", "tomorrowlog", "hydrodata", "yestermet"];
+export const REQUIRED_DATA_TYPES = ["yesterlog", "tomorrowlog", "hydrodata", "yestermet"];
 
 export const DATA_TYPE_META = {
-  yesterdaylog: { label: "Yesterday Log", color: "amber" },
+  yesterlog:    { label: "Yesterday Log", color: "amber" },
   tomorrowlog:  { label: "Tomorrow Log",  color: "indigo" },
   hydrodata:    { label: "Hydro Data",    color: "cyan" },
   yestermet:    { label: "Yesterday Met",  color: "rose" },

@@ -281,8 +281,8 @@ describe("makeRequiredEntry", () => {
   });
 
   it('sets uploadAs to "{dataType}.xlsx"', () => {
-    const entry = makeRequiredEntry("yesterdaylog");
-    expect(entry.uploadAs).toBe("yesterdaylog.xlsx");
+    const entry = makeRequiredEntry("yesterlog");
+    expect(entry.uploadAs).toBe("yesterlog.xlsx");
   });
 
   it('sets sourceType to "folder"', () => {
@@ -305,7 +305,7 @@ describe("REQUIRED_DATA_TYPES & DATA_TYPE_META", () => {
   });
 
   it("contains the four expected data types", () => {
-    expect(REQUIRED_DATA_TYPES).toContain("yesterdaylog");
+    expect(REQUIRED_DATA_TYPES).toContain("yesterlog");
     expect(REQUIRED_DATA_TYPES).toContain("tomorrowlog");
     expect(REQUIRED_DATA_TYPES).toContain("hydrodata");
     expect(REQUIRED_DATA_TYPES).toContain("yestermet");

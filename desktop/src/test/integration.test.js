@@ -212,7 +212,7 @@ describe("Integration: Test file generation", () => {
   });
 
   it("generates files representing all 4 data types", () => {
-    const dataTypes = ["yesterdaylog", "tomorrowlog", "hydrodata", "auxdata"];
+    const dataTypes = ["yesterlog", "tomorrowlog", "hydrodata", "yestermet"];
     for (const dt of dataTypes) {
       const rows = [
         { test_name: `${dt}_gen_test`, data_type: dt, timestamp: ts, value: Math.random() * 100 },
@@ -290,7 +290,7 @@ describe("Integration: Presign request body structure", () => {
   });
 
   it("builds correct body for all 4 required data types", () => {
-    const types = ["yesterdaylog", "tomorrowlog", "hydrodata", "auxdata"];
+    const types = ["yesterlog", "tomorrowlog", "hydrodata", "yestermet"];
     for (const dt of types) {
       const body = buildPresignBody(`${dt}.xlsx`, dt);
       expect(body.facilityId).toBe(FACILITY_ID);
