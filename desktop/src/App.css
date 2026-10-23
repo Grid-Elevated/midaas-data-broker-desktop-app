@@ -6,36 +6,39 @@
   font-style: normal;
 }
 
+/* Use installed system fonts, matching the Home font metrics. */
 @font-face {
-  font-family: 'BrandonGrotesque';
-  src: url('/fonts/Brandon_Grotesque_light.otf') format('opentype');
+  font-family: "IntelliCharge Sans";
+  src: local("Segoe UI"), local("Helvetica Neue"), local("Arial"), local("Liberation Sans");
+  font-style: normal;
   font-weight: 400;
-  font-style: normal;
-  size-adjust: 110%;
+  size-adjust: 90%;
 }
 
 @font-face {
-  font-family: 'BrandonGrotesque';
-  src: url('/fonts/Brandon_Grotesque_regular.otf') format('opentype');
-  font-weight: 500;
+  font-family: "IntelliCharge Sans";
+  src: local("Segoe UI Semibold"), local("Helvetica Neue Medium"), local("Arial"), local("Liberation Sans");
   font-style: normal;
-  size-adjust: 110%;
+  font-weight: 500 600;
+  size-adjust: 90%;
+}
+
+/* Use the installed variable face for fine adjustments between medium and
+   semibold; other text keeps its existing regular/semibold/bold faces. */
+@font-face {
+  font-family: "IntelliCharge Sans";
+  src: local("Segoe UI Variable Text"), local("Segoe UI Semibold"), local("Helvetica Neue Medium"), local("Arial"), local("Liberation Sans");
+  font-style: normal;
+  font-weight: 550;
+  size-adjust: 90%;
 }
 
 @font-face {
-  font-family: 'BrandonGrotesque';
-  src: url('/fonts/Brandon_Grotesque_medium.otf') format('opentype');
-  font-weight: 600;
+  font-family: "IntelliCharge Sans";
+  src: local("Segoe UI Bold"), local("Helvetica Neue Bold"), local("Arial Bold"), local("Liberation Sans Bold");
   font-style: normal;
-  size-adjust: 110%;
-}
-
-@font-face {
-  font-family: 'BrandonGrotesque';
-  src: url('/fonts/Brandon_Grotesque_bold.otf') format('opentype');
-  font-weight: 700;
-  font-style: normal;
-  size-adjust: 110%;
+  font-weight: 700 900;
+  size-adjust: 90%;
 }
 
 :root {
@@ -45,7 +48,7 @@
   --color-primary-text: rgb(0, 100, 98);
   --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.05);
   --border: 1px solid rgb(209,209,209);
-  font-family: "BrandonGrotesque", "Space Grotesk", sans-serif;
+  font-family: "IntelliCharge Sans", "Space Grotesk", sans-serif;
   font-size: 16px;
   line-height: 1.6;
   font-weight: 500;
@@ -104,7 +107,7 @@ body {
 }
 
 .hero h1 {
-  font-family: "BrandonGrotesque", sans-serif;
+  font-family: "IntelliCharge Sans", sans-serif;
   font-size: clamp(1.4rem, 2.5vw, 1.8rem);
   font-weight: 700;
   line-height: 1.15;
@@ -1004,7 +1007,7 @@ body {
 }
 
 .signInHeader {
-  font-family: "BrandonGrotesque", sans-serif;
+  font-family: "IntelliCharge Sans", sans-serif;
   font-size: 1.4rem;
   font-weight: 700;
   line-height: 1.15;
